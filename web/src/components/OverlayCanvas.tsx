@@ -65,7 +65,7 @@ export function OverlayCanvas({ width, height, items, focusedLabel, snippets = {
         const displayLine = line.length > maxChars ? line.slice(0, maxChars - 1) + '…' : line;
         const lw = Math.min(ctx.measureText(displayLine).width + 14, w + 40);
         // Use blue tint for manual references, green for other relevance
-        const isManualRef = line.includes('SM p.');
+        const isManualRef = line.includes(' p.') && /\b(SM|OM|Cessna|O-320)\b/.test(line);
         ctx.fillStyle = isManualRef ? 'rgba(0, 30, 60, 0.82)' : 'rgba(0,0,0,0.75)';
         ctx.fillRect(x, y + h + 2, lw, 18);
         ctx.fillStyle = isManualRef ? 'rgba(77, 166, 255, 0.95)' : 'rgba(0,255,136,0.95)';

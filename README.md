@@ -1,99 +1,81 @@
 # FlightSight
 
-![FlightSight](assets/cover.png)
+**AR-powered aircraft maintenance assistant with real-time component detection, voice interaction, and service manual integration.**
 
-A real-time AI-powered AR assistant for aircraft maintenance technicians. See what you see, hear what you say, and get instant maintenance guidance — all through voice and vision.
+Point your camera (phone, webcam, or AR glasses) at an aircraft — FlightSight identifies components in real time, overlays maintenance data with clickable Cessna 172 Service Manual page references, and answers your questions by voice.
 
-Built on [Meta Wearables DAT SDK](https://github.com/facebook/meta-wearables-dat-ios) + [Gemini Live API](https://ai.google.dev/gemini-api/docs/live) + [OpenClaw](https://github.com/nichochar/openclaw) (optional).
+![Tech Stack](assets/tech-stack.png)
 
 ## What It Does
 
-Put on your glasses (or point your phone camera), and talk:
+- **Real-time component detection** — Gemini 2.0 Flash analyzes camera frames and draws bounding boxes around aircraft parts (engine cowling, propeller, pitot tube, landing gear, etc.)
+- **Service Manual RAG** — Each detected component is matched against a knowledge base extracted from the Cessna 172 Service Manual (D2065-3-13) and the Lycoming O-320 Operator's Manual (60297-22). Overlays show manual page numbers and figure references (e.g. "Cessna SM p.377, Fig 15-2" or "O-320 OM p.34"). Click to open the actual PDF page.
+- **Voice Q&A** — Ask questions hands-free via Web Speech API. Answers are grounded in real manual data with page citations. Text-to-speech output via ElevenLabs.
+- **Technician profiles** — Certifications, work orders, and task cards drive contextual overlays ("On task card", "AD Required", "PPE required").
+- **AR Glasses support** — Upload walkthrough video or stream from Meta Ray-Ban glasses for the same detection + overlay pipeline.
 
-- **"What am I looking at?"** — Gemini sees through your camera and identifies aircraft components (engine cowling, spark plugs, landing gear, etc.)
-- **"What's the torque spec for the engine mount bolts?"** — looks up the Cessna 172 Service Manual and gives you the answer
-- **"Create an inspection log entry for this oil filter change"** — delegates to OpenClaw to file paperwork
-- **"Check if there's an AD on this part"** — searches Airworthiness Directives via OpenClaw
+## Tech Stack
 
-The camera streams at ~1fps to Gemini for visual context, while audio flows bidirectionally in real-time.
+| Layer | Technology |
+|-------|-----------|
+| **Vision / Detection** | Google Gemini 2.0 Flash (via Dedalus API) |
+| **Voice Input** | Web Speech API |
+| **Voice Output** | ElevenLabs API |
+| **Knowledge Base** | Cessna 172 Service Manual + Lycoming O-320 Operator's Manual + RAG JSON index |
+| **Frontend** | React, TypeScript, Vite |
+| **Local Detection** | Python/Flask + YOLOv3 (AeroDetect, optional) |
+| **Agent Gateway** | OpenClaw (future — for agentic tool-calling, paperwork, AD lookup) |
 
 ## How It Works
 
-![How It Works](assets/how-it-works.png)
-
 ```
-Meta Ray-Ban Glasses (or iPhone/phone camera)
+AR Glasses / Phone Camera
        |
-       | video frames + mic audio
-       v
-App (iOS native or Web)
+       |— video frames ——> Gemini 2.0 Flash ——> Bounding boxes + labels
+       |                                              |
+       |                                    RAG Knowledge Base (JSON)
+       |                                    matches components to manual
+       |                                    pages, figures, procedures
+       |                                              |
+       |                                              v
+       |                                    React + TypeScript + Vite
+       |                                    AR overlay with boxes,
+       |                                    manual ref badges,
+       |                                    item detail panel,
+       |                                    clickable PDF page links
        |
-       | JPEG frames (~1fps) + PCM audio (16kHz)
-       v
-Gemini Live API (WebSocket)
-       |
-       |-- Audio response (PCM 24kHz) --> App --> Speaker
-       |-- Tool calls (execute) -------> App --> OpenClaw Gateway
-       |                                            |
-       |                                            v
-       |                                    Technical manual search,
-       |                                    maintenance logging,
-       |                                    AD/SB lookup, paperwork,
-       |                                    messaging, and more
-       |                                            |
-       |<---- Tool response (text) <----- App <-----+
-       |
-       v
-  Gemini speaks the result
+       |— voice audio ——> Web Speech API ——> Gemini 2.0 Flash (+ RAG context)
+                                                      |
+                                                      v
+                                              ElevenLabs API ——> Audio playback
 ```
 
-**Key pieces:**
-- **Gemini Live** — real-time voice + vision AI over WebSocket (native audio, not STT-first)
-- **OpenClaw** (optional) — local gateway that gives Gemini access to 56+ tools and connected apps
-- **iPhone mode** — test the full pipeline using your iPhone camera instead of glasses
-- **Web demo** — React + TypeScript AR overlay with component detection, maintenance data, and safety guidance
+**Detection flow:** Camera frame (every ~4s) → Gemini vision API → JSON array of components with bounding boxes → local KB lookup for manual page refs → overlay canvas renders boxes with blue "SM p.XXX" badges → tap component → detail panel with specs, safety, procedures, supplier pricing, and clickable PDF links.
+
+**Voice flow:** Technician speaks → Web Speech API transcribes → query + RAG context sent to Gemini → answer with manual page citations → ElevenLabs converts to speech → audio plays back.
 
 ## Knowledge Base
 
-FlightSight is powered by real aviation maintenance documentation:
+FlightSight is grounded in real aviation maintenance documentation:
 
-- **Cessna 172 Service Manual** (D2065-3-13, Rev 3, 1977–1986) — covers airframe, engine, systems, and component procedures
-- **MD-11 Aircraft Maintenance Manual Chapter 75** (Air Systems) — covers pneumatic systems, air conditioning, pressurization
+- **Cessna 172 Service Manual** (D2065-3-13, Rev 3, 1977–1986) — 639 pages covering airframe, engine, landing gear, fuel system, instruments, electrical, and structural repair
+- **Lycoming O-320 Operator's Manual** (60297-22, 2nd Edition, 2007) — 68 pages covering engine description, specifications, operating instructions (starting, ground check, leaning, carb heat), periodic inspections (daily pre-flight, 50/100/400-hr), maintenance procedures (magneto timing, cylinder work, hydraulic tappets), and troubleshooting
+- **MD-11 Aircraft Maintenance Manual Chapter 75** (Air Systems)
 
-These documents are ingested by Gemini to provide contextual, manual-referenced responses.
+The manuals are pre-processed into `cessna172-kb.json` — 70+ indexed chunks across both the Cessna SM and O-320 OM, with section numbers, page numbers, figure references, and searchable keywords. At runtime, detected component names are matched against this index to inject real manual content into AI prompts and display clickable page links in the UI. The system intelligently routes engine-specific queries to the O-320 OM and airframe queries to the Cessna SM.
 
 ## Quick Start
-
-### Web Demo
 
 ```bash
 cd web
 cp .env.example .env
-# Add your Gemini API key to .env
+# Set VITE_GEMINI_API_KEY (Dedalus or Google Gemini key)
+# Set VITE_ELEVENLABS_API_KEY for voice output
 npm install
 npm run dev
 ```
 
-Open the browser, point your camera at aircraft components (or upload a video), and see real-time detection overlays with maintenance data.
-
-### iOS App
-
-```bash
-cd samples/CameraAccess
-open CameraAccess.xcodeproj
-```
-
-Add your Gemini API key in `GeminiConfig.swift`, build, and run on your iPhone.
-
-### AeroDetect Server (Optional)
-
-```bash
-cd aero-detect-server
-pip install -r requirements.txt
-python server.py
-```
-
-Runs a local YOLOv3 detection server for aircraft component identification (requires trained weights).
+Open the browser, point your camera at aircraft components (or switch to AR Glasses mode and upload a Cessna 172 video), and see real-time detection overlays with manual references.
 
 ## Architecture
 
@@ -101,14 +83,27 @@ Runs a local YOLOv3 detection server for aircraft component identification (requ
 
 | File | Purpose |
 |------|---------|
-| `src/lib/detection.ts` | Component detection via AeroDetect YOLO, Dedalus, or Gemini vision |
-| `src/lib/itemDetailsApi.ts` | Fetches part specs, maintenance procedures, safety data from Gemini |
+| `src/lib/detection.ts` | Component detection via Gemini vision (conservative: max 8 components, bbox filtering) |
+| `src/lib/knowledgeBase.ts` | RAG module: loads cessna172-kb.json, keyword search, returns manual page refs |
+| `src/lib/itemDetailsApi.ts` | Fetches part specs + procedures from Gemini, enriched with RAG context |
+| `src/lib/voiceQuestion.ts` | Voice Q&A: RAG lookup + Gemini answer + ElevenLabs TTS |
+| `src/lib/elevenlabs.ts` | ElevenLabs text-to-speech integration |
+| `src/lib/geminiLive.ts` | WebSocket client for Gemini Live (real-time voice + vision) |
 | `src/lib/rag.ts` | Technician profiles: certifications, work orders, task cards |
-| `src/lib/overlayRelevanceApi.ts` | Computes overlay badges: "On task card", "AD Required", "Critical" |
-| `src/lib/geminiLive.ts` | WebSocket client for Gemini Live (voice + vision) |
-| `src/components/HealthActionPanel.tsx` | Left panel: safety warnings, PPE, procedures, work context |
-| `src/components/ItemDetailPanel.tsx` | Right panel: part number, specs, suppliers, installation notes |
-| `src/components/ProfilesPanel.tsx` | Technician profile management (certifications, aircraft, task card) |
+| `src/lib/overlayRelevance.ts` | Overlay badges with manual page refs ("SM p.377, Fig 15-2") |
+| `src/components/ItemDetailPanel.tsx` | Detail panel: specs, safety, procedures, clickable PDF page links |
+| `src/components/OverlayCanvas.tsx` | AR overlay: bounding boxes + labels + blue manual ref badges |
+| `src/components/HealthActionPanel.tsx` | Safety warnings, PPE requirements, work context |
+| `src/components/ProfilesPanel.tsx` | Technician profile management |
+
+### Knowledge Base (`web/public/`)
+
+| File | Purpose |
+|------|---------|
+| `cessna172-kb.json` | 70+ chunks from Cessna 172 SM + O-320 OM with page numbers, figures, keywords |
+| `manuals/cessna172-sm.pdf` | Full Cessna 172 Service Manual (639 pages, served for clickable links) |
+| `manuals/o320-operators-manual.pdf` | Lycoming O-320 Operator's Manual (68 pages, engine-specific procedures) |
+| `manuals/md11-ch75.pdf` | MD-11 AMM Chapter 75 |
 
 ### iOS App (`samples/CameraAccess/`)
 
@@ -116,45 +111,33 @@ Runs a local YOLOv3 detection server for aircraft component identification (requ
 |------|---------|
 | `Gemini/GeminiConfig.swift` | API keys, model config, aviation system prompt |
 | `Gemini/GeminiLiveService.swift` | WebSocket client for Gemini Live API |
-| `Gemini/AudioManager.swift` | Mic capture + audio playback |
-| `OpenClaw/ToolCallRouter.swift` | Routes Gemini tool calls to OpenClaw |
-
-### Detection Server (`aero-detect-server/`)
-
-| File | Purpose |
-|------|---------|
-| `server.py` | Flask server for YOLOv3 aircraft component detection |
-| `classes.txt` | 25 aircraft component detection classes |
 
 ## Technician Profiles
 
-The overlay and analysis are driven by technician profiles:
+Overlays and AI responses are driven by technician profiles:
 
 - **Certifications**: A&P Mechanic, IA Inspector, Powerplant, Airframe, Avionics, NDT
 - **Work Context**: Aircraft type, tail number, work order, maintenance type
-- **Task Card**: Components to inspect/service — matched components get "On task card" badges
-- **Safety**: Required PPE and hazard warnings for the current job
+- **Task Card**: Components to inspect — matched components get "On task card" badges
+- **Safety**: Required PPE and hazard warnings
 
-Three preset profiles are included for demo:
-1. **Mike (Cessna 172 Annual)** — Annual inspection with full A&P/IA certs
-2. **Sarah (Engine Overhaul)** — Lycoming O-320 top overhaul
-3. **James (AD Compliance)** — Airworthiness Directive compliance check
+Three presets included for demo:
+1. **Mike** — Cessna 172 Annual Inspection (A&P/IA)
+2. **Sarah** — Lycoming O-320 Engine Overhaul
+3. **James** — Airworthiness Directive Compliance Check
 
-## Setup: OpenClaw (Optional)
+## Future: OpenClaw Agent Integration
 
-OpenClaw gives Gemini the ability to search technical manuals, file maintenance logs, look up ADs, and more.
-
-Follow the [OpenClaw setup guide](https://github.com/nichochar/openclaw) and configure your gateway. See `web/.env.example` for the required environment variables.
+OpenClaw is planned for agentic capabilities — not currently active in the demo. When integrated, it will give Gemini the ability to:
+- Search technical manuals and AD databases
+- File maintenance log entries and inspection reports
+- Send messages to supervisors
+- Interact with maintenance management systems
 
 ## Requirements
 
-- iOS 17.0+ (for iOS app)
-- Xcode 15.0+ (for iOS app)
-- Node.js 18+ (for web demo)
-- Gemini API key ([get one free](https://aistudio.google.com/apikey))
-- Meta Ray-Ban glasses (optional — use phone/webcam mode for testing)
-- OpenClaw on your Mac (optional — for agentic actions)
-
-## License
-
-This source code is licensed under the license found in the [LICENSE](LICENSE) file in the root directory of this source tree.
+- Node.js 18+ (web demo)
+- Gemini API key or Dedalus API key
+- ElevenLabs API key (for voice output)
+- iOS 17.0+ / Xcode 15.0+ (for iOS app, optional)
+- Meta Ray-Ban glasses (optional — phone/webcam works for demo)

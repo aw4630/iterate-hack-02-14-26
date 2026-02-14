@@ -58,7 +58,7 @@ function buildPrompt(question: string, componentContext: string, techProfileSumm
     ? `\nTechnician context (answer with this in mind): ${techProfileSummary}\n`
     : '';
   const kbSection = kbContext
-    ? `\nCESSNA 172 SERVICE MANUAL REFERENCE (real data from D2065-3-13 — use this and cite page numbers):\n${kbContext}\n`
+    ? `\nMAINTENANCE MANUAL REFERENCES (real data from Cessna 172 SM D2065-3-13 and/or Lycoming O-320 OM 60297-22 — use this and cite page numbers):\n${kbContext}\n`
     : '';
   const voiceInstruction = forVoice
     ? '\nAnswer in a brief, conversational way as if giving verbal instructions. 2–3 sentences, natural tone. No bullet lists.'
@@ -70,7 +70,7 @@ ${context}${kbSection}
 User's question: "${question}"
 ${voiceInstruction}
 
-Answer as an aircraft maintenance expert. Use the SERVICE MANUAL REFERENCE data above if relevant — cite the exact page numbers (e.g. "per SM p.377, Fig 15-2"). Also mention part numbers, torque values, safety warnings, and compliance requirements where relevant. Keep it concise (2–4 sentences).`;
+Answer as an aircraft maintenance expert. Use the MANUAL REFERENCES data above if relevant — cite the exact page numbers and which manual (e.g. "per Cessna SM p.377, Fig 15-2" or "per O-320 OM p.34"). Also mention part numbers, torque values, safety warnings, and compliance requirements where relevant. Keep it concise (2–4 sentences).`;
 }
 
 async function askDedalus(question: string, componentContext: string, apiKey: string, profile: PersonProfile | null, kbContext?: string, forVoice = false): Promise<string> {

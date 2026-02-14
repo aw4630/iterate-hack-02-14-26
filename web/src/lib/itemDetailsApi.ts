@@ -14,10 +14,10 @@ const DEDALUS_BASE = 'https://api.dedaluslabs.ai';
 
 function buildDetailsPrompt(label: string, profile: PersonProfile | null, withImage: boolean, kbContext?: string): string {
   const ragContext = profile ? `\n\nTECHNICIAN CONTEXT (use this to tailor the response to their current work):\n${profileSummary(profile)}` : '';
-  const kbSection = kbContext ? `\n\nCESSNA 172 SERVICE MANUAL REFERENCE (use this data — it is from the actual manual D2065-3-13):\n${kbContext}` : '';
-  return `You are an aircraft maintenance expert with knowledge of the Cessna 172 Service Manual (D2065-3-13) and general aviation maintenance practices. You MUST always give concrete answers. Never respond with "Unknown", "check manual", or "—" as a final answer.
+  const kbSection = kbContext ? `\n\nMAINTENANCE MANUAL REFERENCES (real data from the Cessna 172 SM D2065-3-13 and/or Lycoming O-320 Operator's Manual 60297-22):\n${kbContext}` : '';
+  return `You are an aircraft maintenance expert with knowledge of the Cessna 172 Service Manual (D2065-3-13), the Lycoming O-320 Operator's Manual (60297-22), and general aviation maintenance practices. You MUST always give concrete answers. Never respond with "Unknown", "check manual", or "—" as a final answer.
 ${withImage ? 'Look at the aircraft component in the image. Identify the exact part (manufacturer and part number) if visible; otherwise infer from shape/context and aircraft type.' : ''}
-${kbSection ? 'IMPORTANT: The SERVICE MANUAL REFERENCE section below contains REAL data from the Cessna 172 SM. Use this data for your response — cite the exact page numbers and section numbers provided.' : ''}
+${kbSection ? 'IMPORTANT: The MANUAL REFERENCES section below contains REAL data from the Cessna 172 SM and/or Lycoming O-320 OM. Use this data for your response — cite the exact page numbers, section numbers, and which manual (Cessna SM or O-320 OM) the data is from.' : ''}
 For the component "${label}":
 - Use the image, the manual reference data below, and your maintenance knowledge to identify the part and provide all fields.
 - If the part number is not visible, give your best estimate for this type of component on the likely aircraft.
