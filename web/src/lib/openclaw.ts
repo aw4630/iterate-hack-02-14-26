@@ -1,5 +1,5 @@
 /**
- * Proxy tool calls from Gemini Live to your OpenClaw gateway (same as VisionClaw iOS app).
+ * Proxy tool calls from Gemini Live to your OpenClaw gateway (same as FlightSight iOS app).
  * Optional: only used if VITE_OPENCLAW_* env is set.
  */
 

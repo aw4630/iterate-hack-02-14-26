@@ -14,10 +14,10 @@ export const env = {
   get openClawToken(): string {
     return import.meta.env.VITE_OPENCLAW_GATEWAY_TOKEN ?? '';
   },
-  get grocerEyeApiUrl(): string {
-    return import.meta.env.VITE_GROCEREEYE_API_URL ?? '';
+  get aeroDetectApiUrl(): string {
+    return import.meta.env.VITE_AERODETECT_API_URL ?? '';
   },
-  /** Optional: Dedalus key for voice Q&A only. If set, voice "Ask about this product" uses Dedalus (not Gemini). Falls back to VITE_GEMINI_API_KEY. */
+  /** Optional: Dedalus key for voice Q&A only. If set, voice uses Dedalus (not Gemini). Falls back to VITE_GEMINI_API_KEY. */
   get dedalusVoiceApiKey(): string {
     return import.meta.env.VITE_DEDALUS_VOICE_API_KEY ?? import.meta.env.VITE_GEMINI_API_KEY ?? '';
   },
@@ -55,6 +55,6 @@ export function isOpenClawConfigured(): boolean {
   );
 }
 
-export function isGrocerEyeConfigured(): boolean {
-  return Boolean(env.grocerEyeApiUrl && env.grocerEyeApiUrl !== '');
+export function isAeroDetectConfigured(): boolean {
+  return Boolean(env.aeroDetectApiUrl && env.aeroDetectApiUrl !== '');
 }

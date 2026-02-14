@@ -1,5 +1,5 @@
 /**
- * Batch API: get short relevance phrase per item for overlay (Halal, High protein, Vitamin D, etc.).
+ * Batch API: get short relevance phrase per component for overlay (AD Required, Critical, Due for inspection, etc.).
  */
 
 import { env, isDedalusApiKey } from './env';
@@ -11,24 +11,24 @@ const DEDALUS_BASE = 'https://api.dedaluslabs.ai';
 
 function buildPrompt(labels: string[], profile: PersonProfile): string {
   const summary = profileSummary(profile);
-  return `You are helping a shopper see which products match their preferences at a glance.
+  return `You are helping an aircraft maintenance technician see which components are relevant to their current work at a glance.
 
-Products currently visible (use these exact labels): ${labels.map((l) => `"${l}"`).join(', ')}
+Components currently visible (use these exact labels): ${labels.map((l) => `"${l}"`).join(', ')}
 
-User preferences: ${summary}
+Technician context: ${summary}
 
-For each product that is even remotely relevant to their preferences, output a SHORT phrase (2–5 words) saying why:
-- Dietary (halal/kosher/vegan/gluten-free etc): "Halal", "Kosher", "Vegan", "Gluten-free", etc.
-- High protein or value: "High protein", "Good value", "Protein/$"
-- Deficiency (Vitamin D, Iron, B12): "Vitamin D", "Iron", "B12"
-- Body goals: if cutting → "Low cal" or "Good for cut"; if bulking → "High protein" or "Good for bulk"
-- Health conditions: if stomach/digestive issues → "Gentle on stomach" or "Easy to digest" for suitable items (e.g. banana, rice, plain yogurt); if pain/inflammation → mention anti-inflammatory where relevant
-- Shopping list: "On list"
-- Combine with · only if 2 reasons: "Halal · High protein"
+For each component that is relevant to their current work, output a SHORT phrase (2–5 words) saying why:
+- Task card match: "On task card", "Inspect per WO"
+- AD compliance: "AD Required", "Check AD 2024-15-06"
+- Criticality: "Critical", "Safety-critical", "Life-limited"
+- Inspection status: "Due for inspection", "Check service life"
+- Compatibility: "Fits ${profile.workContext?.aircraftType ?? 'this aircraft'}"
+- Safety: "Caution: hot surface", "PPE required"
+- Combine with · only if 2 reasons: "On task card · AD Required"
 
-Only include products that match at least one preference. Use the exact product label as in the list.
-Respond with ONLY a JSON array, no other text. Format: [{"label": "exact product name", "relevance": "short phrase"}]
-Example: [{"label": "canned tuna", "relevance": "High protein"}, {"label": "greek yogurt", "relevance": "High protein · Calcium"}]`;
+Only include components that match at least one criterion. Use the exact component label as in the list.
+Respond with ONLY a JSON array, no other text. Format: [{"label": "exact component name", "relevance": "short phrase"}]
+Example: [{"label": "spark plug", "relevance": "On task card · Inspect"}, {"label": "engine mount bolt", "relevance": "AD Required"}]`;
 }
 
 async function fetchDedalus(labels: string[], profile: PersonProfile, apiKey: string): Promise<Record<string, string>> {

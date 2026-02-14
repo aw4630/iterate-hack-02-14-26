@@ -1,22 +1,16 @@
 import React, { useState } from 'react';
 import type { PersonProfile } from '../lib/rag';
-import { PRESET_PROFILES, loadCustomProfiles, saveCustomProfiles, type DietaryPreference } from '../lib/rag';
+import { PRESET_PROFILES, loadCustomProfiles, saveCustomProfiles, type Certification } from '../lib/rag';
 
-const DIETARY_OPTIONS: { value: DietaryPreference; label: string }[] = [
-  { value: 'halal', label: 'Halal' },
-  { value: 'kosher', label: 'Kosher' },
-  { value: 'vegetarian', label: 'Vegetarian' },
-  { value: 'vegan', label: 'Vegan' },
-  { value: 'pescatarian', label: 'Pescatarian' },
-  { value: 'no_gelatin', label: 'No gelatin' },
-  { value: 'no_alcohol', label: 'No alcohol' },
-  { value: 'gluten_free', label: 'Gluten-free' },
-  { value: 'dairy_free', label: 'Dairy-free' },
-  { value: 'nut_free', label: 'Nut-free' },
-  { value: 'soy_free', label: 'Soy-free' },
-  { value: 'low_sodium', label: 'Low sodium' },
-  { value: 'diabetic_friendly', label: 'Diabetic-friendly' },
-  { value: 'low_fodmap', label: 'Low FODMAP' },
+const CERTIFICATION_OPTIONS: { value: Certification; label: string }[] = [
+  { value: 'ap_mechanic', label: 'A&P Mechanic' },
+  { value: 'ia_inspector', label: 'IA (Inspection Authorization)' },
+  { value: 'powerplant', label: 'Powerplant' },
+  { value: 'airframe', label: 'Airframe' },
+  { value: 'avionics', label: 'Avionics' },
+  { value: 'ndt_certified', label: 'NDT Certified' },
+  { value: 'rts_authority', label: 'RTS Authority' },
+  { value: 'welding_certified', label: 'Welding Certified' },
 ];
 
 const glassStyle: React.CSSProperties = {
@@ -38,45 +32,50 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
   const [customProfiles, setCustomProfiles] = useState<PersonProfile[]>(() => loadCustomProfiles());
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newDietary, setNewDietary] = useState<DietaryPreference[]>([]);
-  const [newProteinBudget, setNewProteinBudget] = useState(false);
-  const [newDeficiencies, setNewDeficiencies] = useState('');
-  const [newShoppingList, setNewShoppingList] = useState('');
+  const [newCertifications, setNewCertifications] = useState<Certification[]>([]);
+  const [newExperienceLevel, setNewExperienceLevel] = useState(false);
+  const [newSafetyItems, setNewSafetyItems] = useState('');
+  const [newTaskCardItems, setNewTaskCardItems] = useState('');
   const [newNotes, setNewNotes] = useState('');
-  const [newHealthConditions, setNewHealthConditions] = useState('');
-  const [newBodyGoals, setNewBodyGoals] = useState('');
-  const [newHealthNotes, setNewHealthNotes] = useState('');
+  const [newAircraftType, setNewAircraftType] = useState('');
+  const [newTailNumber, setNewTailNumber] = useState('');
+  const [newMaintenanceType, setNewMaintenanceType] = useState('');
+  const [newWorkNotes, setNewWorkNotes] = useState('');
 
   const allProfiles = [...PRESET_PROFILES, ...customProfiles];
 
-  const toggleDietary = (v: DietaryPreference) => {
-    setNewDietary((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+  const toggleCertification = (v: Certification) => {
+    setNewCertifications((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
   };
 
-  const addPerson = () => {
-    const name = newName.trim() || 'New person';
-    const deficiencies = newDeficiencies
+  const addTechnician = () => {
+    const name = newName.trim() || 'New technician';
+    const safetyRequirements = newSafetyItems
       .split(/[,;]\s*|\n/)
       .map((s) => s.trim())
       .filter(Boolean)
-      .map((nutrient) => ({ nutrient }));
-    const shoppingList = newShoppingList
+      .map((item) => ({ item, severity: 'required' as const }));
+    const taskCardItems = newTaskCardItems
       .split(/[,;]\s*|\n/)
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
-    const healthConditions = newHealthConditions.split(/[,;]\s*|\n/).map((s) => s.trim()).filter(Boolean);
-    const bodyGoals = newBodyGoals.split(/[,;]\s*|\n/).map((s) => s.trim()).filter(Boolean);
+    const maintenanceType = newMaintenanceType.split(/[,;]\s*|\n/).map((s) => s.trim()).filter(Boolean);
     const profile: PersonProfile = {
       id: `custom-${Date.now()}`,
       name,
-      dietaryRestrictions: newDietary,
-      proteinAndBudget: newProteinBudget,
-      bloodworkDeficiencies: deficiencies,
-      shoppingList,
+      certifications: newCertifications,
+      experienceLevel: newExperienceLevel,
+      safetyRequirements,
+      taskCardItems,
       notes: newNotes.trim() || undefined,
-      bodyHealth:
-        healthConditions.length > 0 || bodyGoals.length > 0 || newHealthNotes.trim()
-          ? { healthConditions, bodyGoals, healthNotes: newHealthNotes.trim() || undefined }
+      workContext:
+        newAircraftType.trim() || newTailNumber.trim() || maintenanceType.length > 0 || newWorkNotes.trim()
+          ? {
+              aircraftType: newAircraftType.trim() || undefined,
+              aircraftTailNumber: newTailNumber.trim() || undefined,
+              maintenanceType: maintenanceType.length > 0 ? maintenanceType : undefined,
+              workNotes: newWorkNotes.trim() || undefined,
+            }
           : undefined,
     };
     const next = [...customProfiles, profile];
@@ -84,14 +83,15 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
     saveCustomProfiles(next);
     setAdding(false);
     setNewName('');
-    setNewDietary([]);
-    setNewProteinBudget(false);
-    setNewDeficiencies('');
-    setNewShoppingList('');
+    setNewCertifications([]);
+    setNewExperienceLevel(false);
+    setNewSafetyItems('');
+    setNewTaskCardItems('');
     setNewNotes('');
-    setNewHealthConditions('');
-    setNewBodyGoals('');
-    setNewHealthNotes('');
+    setNewAircraftType('');
+    setNewTailNumber('');
+    setNewMaintenanceType('');
+    setNewWorkNotes('');
     onSelectProfile(profile);
   };
 
@@ -121,7 +121,7 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#fff' }}>Who’s shopping?</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#fff' }}>Technician Profile</h2>
           <button
             type="button"
             onClick={onClose}
@@ -132,7 +132,7 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
           </button>
         </div>
         <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
-          Overlay and analysis use this profile (dietary, body health, bloodwork, shopping list).
+          Overlay and analysis use this profile (certifications, work context, task card, safety requirements).
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
           {allProfiles.map((p) => (
@@ -152,16 +152,16 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
             >
               <span style={{ fontWeight: 600 }}>{p.name}</span>
               <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
-                {p.dietaryRestrictions.length ? `${p.dietaryRestrictions.join(', ')} · ` : ''}
-                {p.proteinAndBudget ? 'Protein & budget · ' : ''}
-                {p.bloodworkDeficiencies.length ? `${p.bloodworkDeficiencies.length} deficiencies · ` : ''}
-                {p.shoppingList.length ? `${p.shoppingList.length} on list` : ''}
+                {p.certifications.length ? `${p.certifications.join(', ')} · ` : ''}
+                {p.experienceLevel ? 'Senior · ' : ''}
+                {p.safetyRequirements.length ? `${p.safetyRequirements.length} safety items · ` : ''}
+                {p.taskCardItems.length ? `${p.taskCardItems.length} on task card` : ''}
               </div>
-              {p.bodyHealth && (p.bodyHealth.healthConditions?.length || p.bodyHealth.bodyGoals?.length || p.bodyHealth.healthNotes) && (
+              {p.workContext && (p.workContext.aircraftType || p.workContext.workOrderNumber || p.workContext.maintenanceType?.length || p.workContext.workNotes) && (
                 <div style={{ fontSize: 10, color: '#666', marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                  {p.bodyHealth.bodyGoals?.length ? `Goals: ${p.bodyHealth.bodyGoals.join(', ')}. ` : ''}
-                  {p.bodyHealth.healthConditions?.length ? `Conditions: ${p.bodyHealth.healthConditions.join(', ')}. ` : ''}
-                  {p.bodyHealth.healthNotes ? p.bodyHealth.healthNotes.slice(0, 60) + (p.bodyHealth.healthNotes.length > 60 ? '…' : '') : ''}
+                  {p.workContext.aircraftType ? `Aircraft: ${p.workContext.aircraftType}${p.workContext.aircraftTailNumber ? ` (${p.workContext.aircraftTailNumber})` : ''}. ` : ''}
+                  {p.workContext.maintenanceType?.length ? `Type: ${p.workContext.maintenanceType.join(', ')}. ` : ''}
+                  {p.workContext.workNotes ? p.workContext.workNotes.slice(0, 60) + (p.workContext.workNotes.length > 60 ? '…' : '') : ''}
                 </div>
               )}
             </button>
@@ -181,7 +181,7 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
               cursor: 'pointer',
             }}
           >
-            + Add new person
+            + Add new technician
           </button>
         ) : (
           <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: 16 }}>
@@ -201,14 +201,14 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
               }}
             />
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Dietary</div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Certifications</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {DIETARY_OPTIONS.map((o) => (
+                {CERTIFICATION_OPTIONS.map((o) => (
                   <label key={o.value} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                     <input
                       type="checkbox"
-                      checked={newDietary.includes(o.value)}
-                      onChange={() => toggleDietary(o.value)}
+                      checked={newCertifications.includes(o.value)}
+                      onChange={() => toggleCertification(o.value)}
                     />
                     <span style={{ fontSize: 12 }}>{o.label}</span>
                   </label>
@@ -218,16 +218,16 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                checked={newProteinBudget}
-                onChange={(e) => setNewProteinBudget(e.target.checked)}
+                checked={newExperienceLevel}
+                onChange={(e) => setNewExperienceLevel(e.target.checked)}
               />
-              <span style={{ fontSize: 13 }}>Prioritize protein & value (protein per dollar)</span>
+              <span style={{ fontSize: 13 }}>Senior technician / lead mechanic</span>
             </label>
             <input
               type="text"
-              placeholder="Bloodwork deficiencies (e.g. Vitamin D, Iron)"
-              value={newDeficiencies}
-              onChange={(e) => setNewDeficiencies(e.target.value)}
+              placeholder="Safety requirements (e.g. Safety glasses, Hearing protection)"
+              value={newSafetyItems}
+              onChange={(e) => setNewSafetyItems(e.target.value)}
               style={{
                 width: '100%',
                 padding: 10,
@@ -239,9 +239,9 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
               }}
             />
             <textarea
-              placeholder="Shopping list (one per line or comma-separated)"
-              value={newShoppingList}
-              onChange={(e) => setNewShoppingList(e.target.value)}
+              placeholder="Task card items (one per line or comma-separated)"
+              value={newTaskCardItems}
+              onChange={(e) => setNewTaskCardItems(e.target.value)}
               rows={3}
               style={{
                 width: '100%',
@@ -254,12 +254,12 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
                 resize: 'vertical',
               }}
             />
-            <div style={{ fontSize: 11, color: '#00ff88', marginBottom: 6 }}>Body & health (for actionable tags)</div>
+            <div style={{ fontSize: 11, color: '#00ff88', marginBottom: 6 }}>Work Context</div>
             <input
               type="text"
-              placeholder="Health conditions (e.g. IBS, acid reflux, diabetes, stomach sensitivity)"
-              value={newHealthConditions}
-              onChange={(e) => setNewHealthConditions(e.target.value)}
+              placeholder="Aircraft type (e.g. Cessna 172N)"
+              value={newAircraftType}
+              onChange={(e) => setNewAircraftType(e.target.value)}
               style={{
                 width: '100%',
                 padding: 10,
@@ -272,9 +272,9 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
             />
             <input
               type="text"
-              placeholder="Body goals (e.g. cut, bulk, lose weight, gain muscle, alleviate pain)"
-              value={newBodyGoals}
-              onChange={(e) => setNewBodyGoals(e.target.value)}
+              placeholder="Tail number (e.g. N12345)"
+              value={newTailNumber}
+              onChange={(e) => setNewTailNumber(e.target.value)}
               style={{
                 width: '100%',
                 padding: 10,
@@ -287,9 +287,24 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
             />
             <input
               type="text"
-              placeholder="Health notes (e.g. stomach hurts often, avoid spicy)"
-              value={newHealthNotes}
-              onChange={(e) => setNewHealthNotes(e.target.value)}
+              placeholder="Maintenance type (e.g. scheduled, inspection, AD compliance)"
+              value={newMaintenanceType}
+              onChange={(e) => setNewMaintenanceType(e.target.value)}
+              style={{
+                width: '100%',
+                padding: 10,
+                marginBottom: 8,
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 8,
+                color: '#fff',
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Work notes (e.g. Annual inspection, check AD 2024-15-06)"
+              value={newWorkNotes}
+              onChange={(e) => setNewWorkNotes(e.target.value)}
               style={{
                 width: '100%',
                 padding: 10,
@@ -318,7 +333,7 @@ export function ProfilesPanel({ currentProfile, onSelectProfile, onClose }: Prof
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"
-                onClick={addPerson}
+                onClick={addTechnician}
                 style={{
                   flex: 1,
                   padding: 10,

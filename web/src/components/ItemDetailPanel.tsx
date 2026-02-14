@@ -13,47 +13,38 @@ interface ItemDetailPanelProps {
 }
 
 export function ItemDetailPanel({ details, onClose, onAskVoice, isVoiceLoading, detailsLoading, currentProfile }: ItemDetailPanelProps) {
-  const [ingredientPopup, setIngredientPopup] = useState<{ ingredient: string; explanation: string } | null>(null);
-  const [ingredientLoading, setIngredientLoading] = useState<string | null>(null);
+  const [procedurePopup, setProcedurePopup] = useState<{ procedure: string; explanation: string } | null>(null);
+  const [procedureLoading, setProcedureLoading] = useState<string | null>(null);
 
-  const productName = details?.name ?? '';
-  const handleIngredientClick = useCallback(
-    (ingredient: string) => {
-      setIngredientLoading(ingredient);
-      setIngredientPopup(null);
-      getIngredientExplanation(ingredient, productName)
-        .then((explanation) => setIngredientPopup({ ingredient, explanation }))
-        .catch(() => setIngredientPopup({ ingredient, explanation: 'Could not load explanation.' }))
-        .finally(() => setIngredientLoading(null));
+  const componentName = details?.name ?? '';
+  const handleProcedureClick = useCallback(
+    (procedure: string) => {
+      setProcedureLoading(procedure);
+      setProcedurePopup(null);
+      getIngredientExplanation(procedure, componentName)
+        .then((explanation) => setProcedurePopup({ procedure, explanation }))
+        .catch(() => setProcedurePopup({ procedure, explanation: 'Could not load explanation.' }))
+        .finally(() => setProcedureLoading(null));
     },
-    [productName]
+    [componentName]
   );
 
   if (!details) return null;
 
   const {
     name,
-    macros,
-    dietary,
-    allergies,
-    ingredients,
-    priceAtCostco,
+    partNumber,
+    manufacturer,
+    specs,
+    safetyInfo,
+    procedures,
+    priceAtAircraftSpruce,
     priceElsewhere,
-    nutritionSummary,
-    dailyValueContribution,
+    installationNotes,
+    adReferences,
     voiceAnswer,
     compatibilitySummary,
   } = details;
-
-  const bestPrice = priceAtCostco ?? priceElsewhere?.[0]?.price;
-  const proteinPerDollar =
-    currentProfile?.proteinAndBudget && macros?.protein != null && bestPrice != null && bestPrice > 0
-      ? (macros.protein / bestPrice).toFixed(1)
-      : null;
-  const caloriesPerDollar =
-    currentProfile?.proteinAndBudget && macros?.calories != null && bestPrice != null && bestPrice > 0
-      ? Math.round(macros.calories / bestPrice)
-      : null;
 
   const section = (label: string, children: React.ReactNode, accent?: boolean) => (
     <div style={{ marginBottom: 14 }}>
@@ -115,39 +106,42 @@ export function ItemDetailPanel({ details, onClose, onAskVoice, isVoiceLoading, 
       </div>
 
       {detailsLoading && (
-        <div style={{ padding: '20px 0', color: '#888', fontSize: 14 }}>Fetching dietary, macros & nutrition from Gemini…</div>
+        <div style={{ padding: '20px 0', color: '#888', fontSize: 14 }}>Fetching component data from maintenance knowledge base…</div>
       )}
-      {!detailsLoading && dietary && dietary.length > 0 && section('Dietary', dietary.join(', '), true)}
-      {!detailsLoading && macros && section('Macros', `${macros.calories ?? '—'} cal · ${macros.protein ?? '—'}g protein · ${macros.carbs ?? '—'}g carbs · ${macros.fat ?? '—'}g fat`)}
-      {!detailsLoading && allergies && allergies.length > 0 && section('Allergies', allergies.join(', '), false)}
-      {!detailsLoading && (priceAtCostco != null || (priceElsewhere?.length ?? 0) > 0) && section('Price', [priceAtCostco != null ? `Costco $${priceAtCostco.toFixed(2)}` : null, ...(priceElsewhere ?? []).map((e) => `${e.store} $${e.price.toFixed(2)}`)].filter(Boolean).join(' · '))}
-      {!detailsLoading && currentProfile?.proteinAndBudget && (proteinPerDollar != null || caloriesPerDollar != null) && section('Value for you', [proteinPerDollar != null ? `${proteinPerDollar} g protein/$` : null, caloriesPerDollar != null ? `${caloriesPerDollar} cal/$` : null].filter(Boolean).join(' · '), true)}
-      {!detailsLoading && ingredients && ingredients.length > 0 && (
+      {!detailsLoading && partNumber && section('Part Number', partNumber, true)}
+      {!detailsLoading && manufacturer && section('Manufacturer', manufacturer)}
+      {!detailsLoading && specs && section('Specifications',
+        [specs.material, specs.weight ? `Weight: ${specs.weight}` : null, specs.serviceLife ? `Service life: ${specs.serviceLife}` : null, specs.operatingLimits ? `Limits: ${specs.operatingLimits}` : null].filter(Boolean).join(' · ')
+      )}
+      {!detailsLoading && safetyInfo && safetyInfo.length > 0 && section('Safety', safetyInfo.map((s, i) => <div key={i} style={{ color: '#ffaa00', marginBottom: 2 }}>⚠ {s}</div>))}
+      {!detailsLoading && (priceAtAircraftSpruce != null || (priceElsewhere?.length ?? 0) > 0) && section('Supplier Pricing', [priceAtAircraftSpruce != null ? `Aircraft Spruce $${priceAtAircraftSpruce.toFixed(2)}` : null, ...(priceElsewhere ?? []).map((e) => `${e.store} $${e.price.toFixed(2)}`)].filter(Boolean).join(' · '))}
+      {!detailsLoading && procedures && procedures.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Ingredients</div>
+          <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Procedures</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {ingredients.map((ing, i) => (
+            {procedures.map((proc, i) => (
               <button
                 type="button"
-                key={`${ing}-${i}`}
-                onClick={() => handleIngredientClick(ing)}
-                disabled={ingredientLoading !== null}
+                key={`${proc}-${i}`}
+                onClick={() => handleProcedureClick(proc)}
+                disabled={procedureLoading !== null}
                 style={{
                   padding: '6px 10px',
-                  background: ingredientLoading === ing ? 'rgba(0,255,136,0.2)' : 'rgba(255,255,255,0.08)',
+                  background: procedureLoading === proc ? 'rgba(0,255,136,0.2)' : 'rgba(255,255,255,0.08)',
                   border: '1px solid rgba(255,255,255,0.12)',
                   borderRadius: 8,
                   color: '#e0e0e0',
                   fontSize: 12,
-                  cursor: ingredientLoading === ing ? 'wait' : 'pointer',
+                  cursor: procedureLoading === proc ? 'wait' : 'pointer',
+                  textAlign: 'left',
                 }}
               >
-                {ing}
-                {ingredientLoading === ing ? '…' : ''}
+                {proc}
+                {procedureLoading === proc ? '…' : ''}
               </button>
             ))}
           </div>
-          {ingredientPopup && (
+          {procedurePopup && (
             <div
               style={{
                 marginTop: 10,
@@ -157,11 +151,11 @@ export function ItemDetailPanel({ details, onClose, onAskVoice, isVoiceLoading, 
                 border: '1px solid rgba(0,255,136,0.25)',
               }}
             >
-              <div style={{ fontSize: 11, color: '#00ff88', marginBottom: 6 }}>{ingredientPopup.ingredient}</div>
-              <p style={{ margin: 0, fontSize: 13, color: '#ccc', lineHeight: 1.5 }}>{ingredientPopup.explanation}</p>
+              <div style={{ fontSize: 11, color: '#00ff88', marginBottom: 6 }}>{procedurePopup.procedure}</div>
+              <p style={{ margin: 0, fontSize: 13, color: '#ccc', lineHeight: 1.5 }}>{procedurePopup.explanation}</p>
               <button
                 type="button"
-                onClick={() => setIngredientPopup(null)}
+                onClick={() => setProcedurePopup(null)}
                 style={{ marginTop: 8, fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}
               >
                 Close
@@ -170,8 +164,8 @@ export function ItemDetailPanel({ details, onClose, onAskVoice, isVoiceLoading, 
           )}
         </div>
       )}
-      {!detailsLoading && nutritionSummary && section('Nutrition', nutritionSummary)}
-      {!detailsLoading && dailyValueContribution && Object.keys(dailyValueContribution).length > 0 && section('Daily value', Object.entries(dailyValueContribution).map(([k, v]) => `${k} ${v}`).join(', '))}
+      {!detailsLoading && installationNotes && section('Installation', installationNotes)}
+      {!detailsLoading && adReferences && Object.keys(adReferences).length > 0 && section('AD / Service Bulletins', Object.entries(adReferences).map(([k, v]) => `${k}: ${v}`).join('; '), true)}
       {!detailsLoading && compatibilitySummary && section('Compatibility', compatibilitySummary, true)}
 
       {onAskVoice && (
@@ -196,7 +190,7 @@ export function ItemDetailPanel({ details, onClose, onAskVoice, isVoiceLoading, 
             }}
           >
             <span style={{ fontSize: 18 }}>{isVoiceLoading ? '◐' : '🎤'}</span>
-            {isVoiceLoading ? 'Listening… Ask your question' : 'Ask about this product (voice)'}
+            {isVoiceLoading ? 'Listening… Ask your question' : 'Ask about this component (voice)'}
           </button>
           {voiceAnswer && (
             <div style={{ marginTop: 12, padding: 12, background: 'rgba(0,0,0,0.3)', borderRadius: 10, fontSize: 13, color: '#ccc', lineHeight: 1.5 }}>

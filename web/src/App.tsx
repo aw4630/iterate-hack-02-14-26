@@ -10,7 +10,7 @@ import { getOverlaySnippet } from './lib/overlayRelevance';
 import { fetchOverlayRelevance } from './lib/overlayRelevanceApi';
 import type { PersonProfile } from './lib/rag';
 import { PRESET_PROFILES } from './lib/rag';
-import { env, isGrocerEyeConfigured, isDedalusApiKey } from './lib/env';
+import { env, isAeroDetectConfigured, isDedalusApiKey } from './lib/env';
 import { isDedalusBackoff, DEDALUS_BACKOFF_MS, setDedalus429 } from './lib/dedalusRateLimit';
 import { OverlayCanvas } from './components/OverlayCanvas';
 import { ItemDetailPanel } from './components/ItemDetailPanel';
@@ -19,10 +19,10 @@ import { ProfilesPanel } from './components/ProfilesPanel';
 import { HealthActionPanel } from './components/HealthActionPanel';
 import { CopilotNotification } from './components/CopilotNotification';
 
-// Detection frequency: keep Dedalus under RPM limit (429); Google free tier strict; GrocerEye local.
+// Detection frequency: keep Dedalus under RPM limit (429); Google free tier strict; AeroDetect local.
 const DETECTION_INTERVAL_DEDALUS_MS = 4500; // ~13/min to leave headroom for overlay + details
 const DETECTION_INTERVAL_GEMINI_MS = 10000;
-const DETECTION_INTERVAL_GROCEREEYE_MS = 1500;
+const DETECTION_INTERVAL_AERODETECT_MS = 1500;
 
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -117,7 +117,7 @@ export default function App() {
     }
   }, [selectedVideoId, videoDevices.length]);
 
-  // Attach video source: live stream or uploaded Ray-Ban video
+  // Attach video source: live stream or uploaded video
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !hasActiveVideo) return;
@@ -155,8 +155,8 @@ export default function App() {
     setItemDetails(null);
   }, [stream]);
 
-  // Run detection when we have an active video (live stream or uploaded Ray-Ban video) and GrocerEye/Gemini
-  const detectionActive = Boolean(hasActiveVideo && (isGrocerEyeConfigured() || env.geminiApiKey));
+  // Run detection when we have an active video and AeroDetect/Gemini
+  const detectionActive = Boolean(hasActiveVideo && (isAeroDetectConfigured() || env.geminiApiKey));
   const [detectionError, setDetectionError] = useState<string | null>(null);
   useEffect(() => {
     if (!detectionActive) return;
@@ -164,10 +164,10 @@ export default function App() {
     if (!video) return;
     setDetectionError(null);
     const runDetection = async () => {
-      if (!isGrocerEyeConfigured() && isDedalusBackoff(DEDALUS_BACKOFF_MS)) {
-        return; // skip while in 429 backoff (Dedalus rate limit)
+      if (!isAeroDetectConfigured() && isDedalusBackoff(DEDALUS_BACKOFF_MS)) {
+        return; // skip while in 429 backoff
       }
-      const jpeg = isGrocerEyeConfigured()
+      const jpeg = isAeroDetectConfigured()
         ? captureFrameToJpeg(video)
         : captureFrameToJpegForDetection(video, 640, 0.4);
       if (!jpeg) return;
@@ -187,8 +187,8 @@ export default function App() {
         }
       }
     };
-    const intervalMs = isGrocerEyeConfigured()
-      ? DETECTION_INTERVAL_GROCEREEYE_MS
+    const intervalMs = isAeroDetectConfigured()
+      ? DETECTION_INTERVAL_AERODETECT_MS
       : isDedalusApiKey(env.geminiApiKey)
         ? DETECTION_INTERVAL_DEDALUS_MS
         : DETECTION_INTERVAL_GEMINI_MS;
@@ -199,7 +199,7 @@ export default function App() {
     };
   }, [detectionActive, hasActiveVideo]);
 
-  // Smooth follow: every frame lerp displayed boxes toward latest detection so boxes stay on items as camera moves
+  // Smooth follow: every frame lerp displayed boxes toward latest detection
   useEffect(() => {
     if (!detectionActive) return;
     let rafId: number;
@@ -224,7 +224,7 @@ export default function App() {
   const showItemDetailsRef = useRef(showItemDetails);
   showItemDetailsRef.current = showItemDetails;
 
-  // When only one item is in frame, auto-select it and run Gemini analysis (as if user clicked it)
+  // When only one item is in frame, auto-select it
   useEffect(() => {
     if (!detectionActive) {
       lastAutoSelectedSingleRef.current = null;
@@ -264,7 +264,7 @@ export default function App() {
 
   const voiceGotResultRef = useRef(false);
   const startVoiceQuestion = useCallback(async () => {
-    const productName = itemDetails?.name ?? focusedItem ?? 'No product selected';
+    const componentName = itemDetails?.name ?? focusedItem ?? 'No component selected';
     const SpeechRecognitionAPI =
       (typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)) || null;
     if (!SpeechRecognitionAPI) {
@@ -295,9 +295,9 @@ export default function App() {
         setVoiceListening(false);
         setNotification('');
         setVoiceLoading(true);
-        askGeminiAboutProduct(transcript, productName, currentProfile)
+        askGeminiAboutProduct(transcript, componentName, currentProfile)
           .then((answer) => {
-            setVoicePopup({ question: transcript, answer, productName });
+            setVoicePopup({ question: transcript, answer, productName: componentName });
             setItemDetails((prev) => (prev ? { ...prev, voiceAnswer: answer } : null));
           })
           .catch((err) => setNotification(err instanceof Error ? err.message : 'Voice answer failed'))
@@ -345,7 +345,7 @@ export default function App() {
     return () => stopCamera();
   }, []);
 
-  // When leaving Ray-Ban mode, clear uploaded video and revoke URL
+  // When leaving glasses mode, clear uploaded video
   useEffect(() => {
     if (cameraSource !== 'rayban') {
       if (raybanVideoUrlRef.current) {
@@ -356,7 +356,7 @@ export default function App() {
     }
   }, [cameraSource]);
 
-  const handleRaybanVideoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !file.type.startsWith('video/')) return;
@@ -366,7 +366,7 @@ export default function App() {
     setRaybanVideoUrl(url);
   }, []);
 
-  // When switching to Ray-Ban, simulate "connecting" then "connected" for demo
+  // When switching to glasses mode, simulate connecting
   useEffect(() => {
     if (cameraSource !== 'rayban') {
       setMetaGlassesConnected(false);
@@ -378,8 +378,8 @@ export default function App() {
   }, [cameraSource]);
 
   useEffect(() => {
-    document.title = cameraSource === 'rayban' ? 'VisionClaw for Meta – Live from glasses' : 'VisionClaw Grocery – Live AR';
-    return () => { document.title = 'VisionClaw Grocery – Live AR'; };
+    document.title = cameraSource === 'rayban' ? 'FlightSight – Live from glasses' : 'FlightSight – Aircraft Maintenance AR';
+    return () => { document.title = 'FlightSight – Aircraft Maintenance AR'; };
   }, [cameraSource]);
 
   const [videoSize, setVideoSize] = useState({ w: 1280, h: 720 });
@@ -441,26 +441,26 @@ export default function App() {
                 cursor: 'pointer',
               }}
             >
-              Ray-Ban Meta
+              AR Glasses
             </button>
           </div>
           {cameraSource === 'rayban' ? (
             <>
               <div style={{ textAlign: 'left', marginBottom: 16, padding: 12, background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: 12, fontSize: 12, color: '#ccc', lineHeight: 1.5 }}>
-                <strong style={{ color: '#00ff88' }}>Ray-Ban Meta — upload glasses video</strong>
-                <p style={{ margin: '6px 0 0 0' }}>Same models and APIs as on desktop—detection, boxes, overlays, health panel, and details all run in the cloud. No power drop on phone.</p>
-                <p style={{ margin: '8px 0 0 0', fontSize: 11, color: '#00ff88' }}>On phone: open this site, tap below, pick the video from your gallery. Playback gets boxes + overlays + left/right panels.</p>
+                <strong style={{ color: '#00ff88' }}>AR Glasses — upload maintenance video</strong>
+                <p style={{ margin: '6px 0 0 0' }}>Same detection, overlays, and maintenance panels run in the cloud. Upload a video of the aircraft for analysis.</p>
+                <p style={{ margin: '8px 0 0 0', fontSize: 11, color: '#00ff88' }}>Upload a video of the aircraft engine or exterior. Detection + maintenance overlays will display over the video.</p>
               </div>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'inline-block', padding: '14px 24px', background: 'rgba(84, 255, 175, 0.25)', color: '#999', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', border: '2px solid #00ff88', minHeight: 44, boxSizing: 'border-box', lineHeight: 1.2 }}>
-                  Upload glasses video
-                  <input type="file" accept="video/*" onChange={handleRaybanVideoUpload} style={{ display: 'none' }} aria-label="Upload video from glasses" />
+                  Upload aircraft video
+                  <input type="file" accept="video/*" onChange={handleVideoUpload} style={{ display: 'none' }} aria-label="Upload aircraft video" />
                 </label>
-                <p style={{ margin: '8px 0 0 0', fontSize: 11, color: '#888' }}>Works on phone: choose from Photo Library. Or use a camera below on desktop.</p>
+                <p style={{ margin: '8px 0 0 0', fontSize: 11, color: '#888' }}>Upload video of aircraft engine, exterior, or maintenance area.</p>
               </div>
             </>
           ) : (
-            <p style={{ marginBottom: 16 }}>Click &quot;Refresh camera list&quot;, select <strong>Camo</strong> (or your webcam), then &quot;Start camera&quot;.</p>
+            <p style={{ marginBottom: 16 }}>Click &quot;Refresh camera list&quot;, select your camera, then &quot;Start camera&quot;. Point at aircraft components for detection.</p>
           )}
           <div style={{ marginBottom: 16 }}>
             <button
@@ -480,7 +480,7 @@ export default function App() {
             {videoDevices.length > 0 && (
               <>
                 <label style={{ display: 'block', textAlign: 'left', fontSize: 11, color: '#888', marginTop: 12, marginBottom: 4 }}>
-                  {cameraSource === 'rayban' ? 'Glasses feed (e.g. Camo from phone with Meta View)' : 'Camera'}
+                  {cameraSource === 'rayban' ? 'Glasses feed (e.g. Camo from phone)' : 'Camera'}
                 </label>
                 <select
                   value={selectedVideoId}
@@ -549,9 +549,9 @@ export default function App() {
             style={{ position: 'absolute', inset: 0, cursor: 'pointer', pointerEvents: 'auto' }}
             onClick={handleVideoClick}
             onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLElement).click()}
-            aria-label="Click a product box to see details"
+            aria-label="Click a component box to see details"
           />
-          {/* Meta glasses mode: LIVE badge + subtle POV vignette */}
+          {/* Glasses mode: LIVE badge + subtle POV vignette */}
           {cameraSource === 'rayban' && (
             <>
               <div
@@ -575,7 +575,7 @@ export default function App() {
                 }}
               >
                 <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#00ff88', animation: raybanVideoUrl ? 'none' : 'pulse 1.5s ease-in-out infinite' }} />
-                {raybanVideoUrl ? 'GLASSES' : 'LIVE'}
+                {raybanVideoUrl ? 'VIDEO' : 'LIVE'}
               </div>
               <div
                 style={{
@@ -617,14 +617,14 @@ export default function App() {
                   {raybanVideoUrl ? (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00ff88' }} />
-                      <span style={{ fontSize: 12, color: '#00ff88', fontWeight: 600 }}>Playing glasses video</span>
+                      <span style={{ fontSize: 12, color: '#00ff88', fontWeight: 600 }}>Playing aircraft video</span>
                     </span>
                   ) : !metaGlassesConnected ? (
-                    <span style={{ fontSize: 12, color: '#ffaa00' }}>Connecting to Ray-Ban Meta…</span>
+                    <span style={{ fontSize: 12, color: '#ffaa00' }}>Connecting to AR glasses…</span>
                   ) : (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 8px #00ff88', animation: 'pulse 1.5s ease-in-out infinite' }} />
-                      <span style={{ fontSize: 12, color: '#00ff88', fontWeight: 600 }}>Live from Ray-Ban Meta</span>
+                      <span style={{ fontSize: 12, color: '#00ff88', fontWeight: 600 }}>Live from AR glasses</span>
                       <span style={{ fontSize: 11, color: '#888' }}>Battery 87%</span>
                     </span>
                   )}
@@ -660,7 +660,7 @@ export default function App() {
                   cursor: 'pointer',
                 }}
               >
-                Ray-Ban Meta
+                AR Glasses
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -692,7 +692,7 @@ export default function App() {
                   cursor: 'pointer',
                 }}
               >
-                {currentProfile?.name ?? 'Who\'s shopping?'}
+                {currentProfile?.name ?? 'Technician Profile'}
               </button>
             </div>
           </div>
@@ -704,7 +704,7 @@ export default function App() {
             detailsLoading={detailsLoading}
             currentProfile={currentProfile}
           />
-          {/* Always show detection panel when camera is on so user sees boxes/data status */}
+          {/* Always show detection panel when camera is on */}
           {showProfiles && (
             <ProfilesPanel
               currentProfile={currentProfile}
@@ -733,27 +733,27 @@ export default function App() {
               <div style={{ fontSize: 11, color: '#00ff88', marginBottom: 6 }}>
                 {cameraSource === 'rayban'
                   ? (detectionActive
-                    ? (raybanVideoUrl ? `Glasses video · ${detectedItems.length} items` : `Companion · from Ray-Ban Meta · ${detectedItems.length} items`)
-                    : 'Companion · waiting for feed or upload…')
+                    ? (raybanVideoUrl ? `Aircraft video · ${detectedItems.length} components` : `AR glasses · ${detectedItems.length} components`)
+                    : 'Waiting for feed or upload…')
                   : detectionActive
-                    ? `${isGrocerEyeConfigured() ? 'GrocerEye' : isDedalusApiKey(env.geminiApiKey) ? 'Dedalus' : 'Gemini'} · ${detectedItems.length} items`
+                    ? `${isAeroDetectConfigured() ? 'AeroDetect' : isDedalusApiKey(env.geminiApiKey) ? 'Dedalus' : 'Gemini'} · ${detectedItems.length} components`
                     : 'Detection off'}
               </div>
               {!detectionActive && cameraSource !== 'rayban' && (
-                <div style={{ fontSize: 11, color: '#888' }}>Set GrocerEye URL or Gemini API key in .env</div>
+                <div style={{ fontSize: 11, color: '#888' }}>Set AeroDetect URL or Gemini API key in .env</div>
               )}
               {cameraSource === 'rayban' && detectionActive && (
-                <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>Receiving live view from glasses</div>
+                <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>Analyzing aircraft feed</div>
               )}
               {detectionError && (
                 <div style={{ fontSize: 11, color: '#ff8866', marginBottom: 6 }}>{detectionError}</div>
               )}
               {detectionActive && displayedItems.length === 0 && !detectionError && (
-                <div style={{ fontSize: 12, color: '#888' }}>Point camera at products…</div>
+                <div style={{ fontSize: 12, color: '#888' }}>Point camera at aircraft components…</div>
               )}
               {displayedItems.length > 0 && (
                 <>
-                  <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Tap to focus</div>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Tap to inspect</div>
                   {displayedItems.slice(0, 8).map((item, i) => (
                     <button
                       type="button"

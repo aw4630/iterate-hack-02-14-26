@@ -1,6 +1,6 @@
 /**
- * Gemini Live API over WebSocket (mirrors VisionClaw iOS GeminiLiveService).
- * Use with Camo camera feed: send JPEG frames + PCM audio; receive audio + tool calls.
+ * Gemini Live API over WebSocket for FlightSight.
+ * Use with camera feed: send JPEG frames + PCM audio; receive audio + tool calls.
  */
 
 const WS_BASE =
@@ -23,14 +23,14 @@ export interface GeminiLiveCallbacks {
 const EXECUTE_TOOL_DECLARATION = {
   name: 'execute',
   description:
-    'Your only way to take action. Use for: sending messages, searching the web, adding to lists, setting reminders, creating notes, research, smart home, app interactions. When in doubt, use this tool.',
+    'Your only way to take action. Use for: searching technical manuals, looking up part numbers, creating maintenance log entries, sending messages to supervisors, filing inspection reports, researching ADs and service bulletins, interacting with maintenance management systems. When in doubt, use this tool.',
   parameters: {
     type: 'object',
     properties: {
       task: {
         type: 'string',
         description:
-          'Clear, detailed description of what to do. Include all relevant context: names, content, platforms, quantities.',
+          'Clear, detailed description of what to do. Include all relevant context: part numbers, aircraft tail numbers, manual references, inspection types.',
       },
     },
     required: ['task'],
@@ -38,11 +38,18 @@ const EXECUTE_TOOL_DECLARATION = {
   behavior: 'BLOCKING',
 };
 
-const GROCERY_SYSTEM_INSTRUCTION = `You are an AI assistant for someone grocery shopping with a live camera (e.g. phone or AR glasses). You can see through their camera and have a voice conversation.
+const AVIATION_SYSTEM_INSTRUCTION = `You are an AI assistant for an aircraft maintenance technician working with a live camera (phone, AR glasses, or smart glasses). You can see through their camera and have a voice conversation.
 
-You help with: identifying products, nutrition questions, dietary restrictions (halal, haram, allergies), comparing prices, and adding items to lists. Keep responses concise and natural.
+You are knowledgeable about:
+- Cessna 172 Service Manual (D2065-3-13, Revision 3, 1977-1986 models)
+- MD-11 Aircraft Maintenance Manual Chapter 75 (Air Systems)
+- General aviation maintenance practices, FAA regulations, and Airworthiness Directives
 
-You have exactly ONE tool: execute. Use it for: adding to shopping lists, searching the web for prices or ingredients, sending messages, reminders, notes, or any persistent action. Always speak a brief acknowledgment before calling execute (e.g. "Sure, adding that to your list." then call execute). Never pretend to do actions yourself.`;
+You help with: identifying aircraft parts and components, looking up maintenance procedures, checking part numbers and compatibility, safety warnings, AD compliance, torque values, inspection criteria, and completing paperwork. Keep responses concise and technical.
+
+You have exactly ONE tool: execute. Use it for: searching technical documentation, looking up part numbers or ADs, creating maintenance log entries, filing inspection reports, sending messages, or any persistent action. Always speak a brief acknowledgment before calling execute (e.g. "Looking up that torque spec now." then call execute). Never pretend to do actions yourself.
+
+IMPORTANT: When discussing maintenance procedures, always reference the applicable manual section (e.g. "Per Cessna SM Section 11..."). When discussing safety, always mention required PPE and hazards.`;
 
 export class GeminiLiveClient {
   private ws: WebSocket | null = null;
@@ -126,7 +133,7 @@ export class GeminiLiveClient {
           thinkingConfig: { thinkingBudget: 0 },
         },
         systemInstruction: {
-          parts: [{ text: GROCERY_SYSTEM_INSTRUCTION }],
+          parts: [{ text: AVIATION_SYSTEM_INSTRUCTION }],
         },
         tools: [{ functionDeclarations: [EXECUTE_TOOL_DECLARATION] }],
         realtimeInputConfig: {

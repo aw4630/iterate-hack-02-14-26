@@ -1,106 +1,116 @@
 /**
- * RAG (Retrieval-Augmented Context) for VisionClaw: preferences, dietary, bloodwork, shopping list.
- * Each "person" profile drives overlay emphasis and Gemini analysis.
+ * RAG (Retrieval-Augmented Context) for FlightSight: technician profiles, certifications, work orders.
+ * Each technician profile drives overlay emphasis and Gemini analysis.
  */
 
-export type DietaryPreference =
-  | 'halal'
-  | 'kosher'
-  | 'vegetarian'
-  | 'vegan'
-  | 'no_gelatin'
-  | 'no_alcohol'
-  | 'gluten_free'
-  | 'dairy_free'
-  | 'nut_free'
-  | 'soy_free'
-  | 'low_sodium'
-  | 'diabetic_friendly'
-  | 'low_fodmap'
-  | 'pescatarian';
+export type Certification =
+  | 'ap_mechanic'
+  | 'ia_inspector'
+  | 'powerplant'
+  | 'airframe'
+  | 'avionics'
+  | 'ndt_certified'
+  | 'rts_authority'
+  | 'welding_certified';
 
-export interface BloodworkDeficiency {
-  nutrient: string;
-  severity?: 'low' | 'moderate' | 'deficient';
-  targetDaily?: string;
+export interface SafetyRequirement {
+  item: string;
+  severity?: 'required' | 'recommended' | 'optional';
+  notes?: string;
 }
 
-/** Body/health context for actionable, health-track recommendations. */
-export interface BodyHealth {
-  /** Weight in kg (optional, for rough BMI/context) */
-  weightKg?: number;
-  /** Height in cm (optional) */
-  heightCm?: number;
-  /** e.g. "IBS", "acid reflux", "diabetes", "high blood pressure", "stomach sensitivity" */
-  healthConditions?: string[];
-  /** e.g. "cut", "bulk", "maintain", "lose weight", "gain muscle", "alleviate pain" */
-  bodyGoals?: string[];
-  /** Free text: "stomach hurts often", "avoid spicy", etc. */
-  healthNotes?: string;
+/** Work context for actionable, task-driven recommendations. */
+export interface WorkContext {
+  /** Current aircraft tail number or fleet designation */
+  aircraftTailNumber?: string;
+  /** Aircraft type (e.g. "Cessna 172", "MD-11") */
+  aircraftType?: string;
+  /** Current work order / task card number */
+  workOrderNumber?: string;
+  /** Type of maintenance: "scheduled", "unscheduled", "inspection", "AD compliance", "modification" */
+  maintenanceType?: string[];
+  /** Free text: special notes from supervisor, squawk description, etc. */
+  workNotes?: string;
 }
 
 export interface PersonProfile {
   id: string;
   name: string;
-  dietaryRestrictions: DietaryPreference[];
-  proteinAndBudget: boolean;
-  bloodworkDeficiencies: BloodworkDeficiency[];
-  shoppingList: string[];
+  certifications: Certification[];
+  experienceLevel: boolean; // true = senior/lead
+  safetyRequirements: SafetyRequirement[];
+  taskCardItems: string[];
   notes?: string;
-  /** Body metrics, conditions, goals – drives overlay tags and "what this means for you" */
-  bodyHealth?: BodyHealth;
+  /** Work context: aircraft, work order, maintenance type */
+  workContext?: WorkContext;
 }
 
-export const PRESET_PROTEIN_BUDGET: PersonProfile = {
-  id: 'preset-protein-budget',
-  name: 'Alex (Protein + Budget)',
-  dietaryRestrictions: [],
-  proteinAndBudget: true,
-  bloodworkDeficiencies: [],
-  shoppingList: ['chicken breast', 'eggs', 'greek yogurt', 'lentils', 'canned tuna', 'oatmeal'],
-  notes: 'Prioritize high protein per dollar and volume (mass per dollar).',
-  bodyHealth: {
-    bodyGoals: ['bulk', 'gain muscle'],
-    healthNotes: 'Budget-conscious, wants maximum protein per dollar.',
+export const PRESET_CESSNA_ANNUAL: PersonProfile = {
+  id: 'preset-cessna-annual',
+  name: 'Mike (Cessna 172 Annual)',
+  certifications: ['ap_mechanic', 'ia_inspector', 'powerplant', 'airframe'],
+  experienceLevel: true,
+  safetyRequirements: [
+    { item: 'Safety glasses', severity: 'required' },
+    { item: 'Hearing protection', severity: 'recommended', notes: 'Engine run-up' },
+  ],
+  taskCardItems: ['engine oil change', 'spark plug inspection', 'magneto timing check', 'brake pad inspection', 'oil filter replacement', 'compression test'],
+  notes: 'Annual inspection on Cessna 172N, N12345. Reference: Cessna 172 Service Manual D2065-3-13.',
+  workContext: {
+    aircraftTailNumber: 'N12345',
+    aircraftType: 'Cessna 172N',
+    workOrderNumber: 'WO-2026-0214',
+    maintenanceType: ['scheduled', 'inspection'],
+    workNotes: 'Annual inspection. Check AD 2024-15-06 compliance (engine mount bolts torque).',
   },
 };
 
-export const PRESET_RELIGIOUS_DIETARY: PersonProfile = {
-  id: 'preset-religious',
-  name: 'Jordan (Halal/Kosher)',
-  dietaryRestrictions: ['halal', 'no_gelatin', 'no_alcohol'],
-  proteinAndBudget: false,
-  bloodworkDeficiencies: [],
-  shoppingList: ['halal meat', 'pita', 'hummus', 'dates', 'olive oil'],
-  notes: 'Halal and no gelatin/alcohol. Prefer kosher when halal unclear.',
-  bodyHealth: { healthNotes: 'Focus on halal/kosher compliance.' },
+export const PRESET_ENGINE_OVERHAUL: PersonProfile = {
+  id: 'preset-engine-overhaul',
+  name: 'Sarah (Engine Overhaul)',
+  certifications: ['ap_mechanic', 'powerplant'],
+  experienceLevel: false,
+  safetyRequirements: [
+    { item: 'Safety glasses', severity: 'required' },
+    { item: 'Chemical-resistant gloves', severity: 'required', notes: 'Fuel system work' },
+    { item: 'Fire extinguisher nearby', severity: 'required' },
+  ],
+  taskCardItems: ['cylinder removal', 'piston inspection', 'crankshaft inspection', 'camshaft inspection', 'oil pump check', 'accessory case inspection'],
+  notes: 'Lycoming O-320 top overhaul at TBO. Reference maintenance manual and Lycoming SI-1009.',
+  workContext: {
+    aircraftType: 'Cessna 172',
+    maintenanceType: ['unscheduled'],
+    workNotes: 'Top overhaul at 2000 hrs TBO. Cylinder #3 low compression reported.',
+  },
 };
 
-export const PRESET_BLOODWORK_DEFICIENCY: PersonProfile = {
-  id: 'preset-bloodwork',
-  name: 'Sam (Bloodwork Deficiencies)',
-  dietaryRestrictions: ['vegetarian'],
-  proteinAndBudget: false,
-  bloodworkDeficiencies: [
-    { nutrient: 'Vitamin D', severity: 'deficient', targetDaily: '2000 IU' },
-    { nutrient: 'Iron', severity: 'low', targetDaily: '18 mg' },
-    { nutrient: 'B12', severity: 'moderate' },
+export const PRESET_AD_COMPLIANCE: PersonProfile = {
+  id: 'preset-ad-compliance',
+  name: 'James (AD Compliance)',
+  certifications: ['ap_mechanic', 'ia_inspector', 'airframe'],
+  experienceLevel: true,
+  safetyRequirements: [
+    { item: 'Safety glasses', severity: 'required' },
+    { item: 'Torque wrench calibrated', severity: 'required' },
   ],
-  shoppingList: ['fortified milk', 'spinach', 'beans', 'eggs', 'nutritional yeast'],
-  notes: 'Recent bloodwork: low Vitamin D, borderline iron, moderate B12. Prefer fortified and plant iron sources.',
-  bodyHealth: {
-    healthConditions: ['low Vitamin D', 'borderline iron'],
-    bodyGoals: ['maintain', 'address deficiencies'],
+  taskCardItems: ['engine mount bolt inspection', 'torque verification', 'control surface inspection', 'trailing edge crack check'],
+  notes: 'AD compliance check. Reference: AD 2024-15-06 (engine mount bolts), Cessna SM TR5 (trailing edge cracks).',
+  workContext: {
+    aircraftTailNumber: 'N67890',
+    aircraftType: 'Cessna 172P',
+    workOrderNumber: 'WO-2026-0215',
+    maintenanceType: ['AD compliance', 'inspection'],
+    workNotes: 'Biennial AD compliance review. Verify engine mount bolt torque values per TR4.',
   },
 };
 
 export const PRESET_PROFILES: PersonProfile[] = [
-  PRESET_PROTEIN_BUDGET,
-  PRESET_RELIGIOUS_DIETARY,
-  PRESET_BLOODWORK_DEFICIENCY,
+  PRESET_CESSNA_ANNUAL,
+  PRESET_ENGINE_OVERHAUL,
+  PRESET_AD_COMPLIANCE,
 ];
 
-const STORAGE_KEY = 'visionclaw_profiles';
+const STORAGE_KEY = 'flightsight_profiles';
 
 export function loadCustomProfiles(): PersonProfile[] {
   try {
@@ -121,36 +131,36 @@ export function saveCustomProfiles(profiles: PersonProfile[]): void {
   }
 }
 
-/** Check if label is on shopping list (fuzzy: lowercase, includes). */
-export function isOnShoppingList(label: string, profile: PersonProfile): boolean {
+/** Check if label is on task card (fuzzy: lowercase, includes). */
+export function isOnTaskCard(label: string, profile: PersonProfile): boolean {
   const lower = label.toLowerCase();
-  return profile.shoppingList.some((item) => lower.includes(item.toLowerCase()) || item.toLowerCase().includes(lower));
+  return profile.taskCardItems.some((item) => lower.includes(item.toLowerCase()) || item.toLowerCase().includes(lower));
 }
 
 /** One-line summary of profile for prompts. */
 export function profileSummary(profile: PersonProfile): string {
   const parts: string[] = [];
-  if (profile.dietaryRestrictions.length > 0) {
-    parts.push(`Dietary: ${profile.dietaryRestrictions.join(', ')}.`);
+  if (profile.certifications.length > 0) {
+    parts.push(`Certifications: ${profile.certifications.join(', ')}.`);
   }
-  if (profile.proteinAndBudget) {
-    parts.push('Prioritize protein and value (protein per dollar, mass per dollar).');
+  if (profile.experienceLevel) {
+    parts.push('Senior technician / lead mechanic.');
   }
-  if (profile.bloodworkDeficiencies.length > 0) {
+  if (profile.safetyRequirements.length > 0) {
     parts.push(
-      `Deficiencies to address: ${profile.bloodworkDeficiencies.map((d) => d.nutrient + (d.targetDaily ? ` (${d.targetDaily})` : '')).join(', ')}.`
+      `Safety requirements: ${profile.safetyRequirements.map((s) => s.item + (s.notes ? ` (${s.notes})` : '')).join(', ')}.`
     );
   }
-  const bh = profile.bodyHealth;
-  if (bh?.healthConditions?.length) {
-    parts.push(`Health conditions: ${bh.healthConditions.join(', ')}.`);
+  const wc = profile.workContext;
+  if (wc?.aircraftType) {
+    parts.push(`Aircraft: ${wc.aircraftType}${wc.aircraftTailNumber ? ` (${wc.aircraftTailNumber})` : ''}.`);
   }
-  if (bh?.bodyGoals?.length) {
-    parts.push(`Body goals: ${bh.bodyGoals.join(', ')}.`);
+  if (wc?.maintenanceType?.length) {
+    parts.push(`Maintenance type: ${wc.maintenanceType.join(', ')}.`);
   }
-  if (bh?.healthNotes) parts.push(bh.healthNotes);
-  if (profile.shoppingList.length > 0) {
-    parts.push(`Shopping list: ${profile.shoppingList.slice(0, 12).join(', ')}${profile.shoppingList.length > 12 ? '...' : ''}.`);
+  if (wc?.workNotes) parts.push(wc.workNotes);
+  if (profile.taskCardItems.length > 0) {
+    parts.push(`Task card items: ${profile.taskCardItems.slice(0, 12).join(', ')}${profile.taskCardItems.length > 12 ? '...' : ''}.`);
   }
   if (profile.notes) parts.push(profile.notes);
   return parts.join(' ');

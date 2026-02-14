@@ -1,8 +1,9 @@
 /**
- * Item detection: GrocerEye YOLO, Dedalus (Gemini via Dedalus), or Google Gemini REST.
+ * Component detection: AeroDetect YOLO, Dedalus (Gemini via Dedalus), or Google Gemini REST.
+ * Identifies aircraft parts and components in camera frames.
  */
 
-import { env, isGrocerEyeConfigured, isDedalusApiKey } from './env';
+import { env, isAeroDetectConfigured, isDedalusApiKey } from './env';
 import { setDedalus429 } from './dedalusRateLimit';
 
 export interface BoundingBox {
@@ -17,9 +18,9 @@ export interface DetectedItem {
   bbox: BoundingBox;
 }
 
-/** Call GrocerEye server POST /detect with base64 image. */
-async function detectWithGrocerEye(jpegBase64: string): Promise<DetectedItem[]> {
-  const base = env.grocerEyeApiUrl.replace(/\/$/, '');
+/** Call AeroDetect server POST /detect with base64 image. */
+async function detectWithAeroDetect(jpegBase64: string): Promise<DetectedItem[]> {
+  const base = env.aeroDetectApiUrl.replace(/\/$/, '');
   const res = await fetch(`${base}/detect`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -27,7 +28,7 @@ async function detectWithGrocerEye(jpegBase64: string): Promise<DetectedItem[]> 
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`GrocerEye error: ${res.status} ${err}`);
+    throw new Error(`AeroDetect error: ${res.status} ${err}`);
   }
   const data = (await res.json()) as { items?: Array<{ label: string; bbox: BoundingBox }>; error?: string };
   if (data.error) throw new Error(data.error);
@@ -35,16 +36,16 @@ async function detectWithGrocerEye(jpegBase64: string): Promise<DetectedItem[]> 
   return items.map((o) => ({ label: o.label, bbox: normalizeBbox(o.bbox) }));
 }
 
-const DETECTION_PROMPT = `You are analyzing a single image from a grocery store or kitchen. List every visible product or food item that a shopper might pick up.
+const DETECTION_PROMPT = `You are analyzing a single image from an aircraft maintenance hangar, ramp, or workshop. List every visible aircraft part, component, system, or piece of equipment that a maintenance technician would need to identify or inspect.
 
-CRITICAL: Always use SPECIFIC product or food names. Examples: "canned tuna", "olive oil", "vitamin D bottle", "greek yogurt", "oatmeal box", "salmon can". Never use only generic words like "box", "bottle", "can", "container"—identify what is inside or what the product is (e.g. "canned fish", "water bottle", "sauce bottle"). If multiple similar items (e.g. several cans), you may use one label like "canned fish" or "fish cans" for each.
+CRITICAL: Always use SPECIFIC part or component names. Examples: "engine cowling", "propeller blade", "landing gear strut", "oil filter", "exhaust stack", "spark plug", "magneto", "carburetor", "fuel line", "brake assembly", "pitot tube", "navigation light", "aileron hinge", "flap actuator". Never use only generic words like "metal part", "component", "piece"—identify what it is specifically. If you can identify the aircraft model (e.g. Cessna 172), mention it in the label context.
 
-Respond with ONLY a JSON array, no other text. Each element: { "label": "short specific product name", "bbox": { "x", "y", "width", "height" } }.
+Respond with ONLY a JSON array, no other text. Each element: { "label": "short specific component name", "bbox": { "x", "y", "width", "height" } }.
 Use normalized coordinates 0-1: x,y = top-left corner of the item, width and height = size. Be precise so we can draw boxes on the image.`;
 
 const DEDALUS_BASE = 'https://api.dedaluslabs.ai';
 
-/** Call Dedalus (OpenAI-compatible) with Gemini for vision. Uses your Dedalus credit. */
+/** Call Dedalus (OpenAI-compatible) with Gemini for vision. */
 async function detectWithDedalus(jpegBase64: string, apiKey: string): Promise<DetectedItem[]> {
   const res = await fetch(`${DEDALUS_BASE}/v1/chat/completions`, {
     method: 'POST',
@@ -131,7 +132,7 @@ async function detectWithGemini(jpegBase64: string, apiKey: string): Promise<Det
       } catch {
         // ignore
       }
-      throw new Error(`Gemini rate limit (free tier). Retry in ${retrySec}s or use GrocerEye for local detection.`);
+      throw new Error(`Gemini rate limit (free tier). Retry in ${retrySec}s or use AeroDetect for local detection.`);
     }
     throw new Error(`Detection API error: ${res.status} ${errText.slice(0, 200)}`);
   }
@@ -146,7 +147,7 @@ export async function detectItemsInImage(
   jpegBase64: string,
   apiKey: string
 ): Promise<DetectedItem[]> {
-  if (isGrocerEyeConfigured()) return detectWithGrocerEye(jpegBase64);
+  if (isAeroDetectConfigured()) return detectWithAeroDetect(jpegBase64);
   if (isDedalusApiKey(apiKey)) return detectWithDedalus(jpegBase64, apiKey);
   return detectWithGemini(jpegBase64, apiKey);
 }

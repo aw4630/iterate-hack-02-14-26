@@ -12,225 +12,130 @@ const glassStyle: React.CSSProperties = {
 };
 
 interface HealthActionPanelProps {
-  /** Selected item details (when user clicked or auto-selected) */
+  /** Selected component details (when user clicked or auto-selected) */
   itemDetails: ItemDetails | null;
-  /** Current shopper profile for "what this means for you" */
+  /** Current technician profile for context-aware guidance */
   currentProfile: PersonProfile | null;
 }
 
-/** Product name lower for matching. */
-function productMatch(name: string, ...keywords: string[]): boolean {
+/** Component name lower for matching. */
+function componentMatch(name: string, ...keywords: string[]): boolean {
   const n = name.toLowerCase();
   return keywords.some((k) => n.includes(k));
 }
 
-/** Rough category so we don't treat vitamins like food or fruit like a protein source. */
-function getProductCategory(name: string): 'supplement' | 'fruit' | 'vegetable' | 'dairy' | 'meat_fish_egg' | 'grain' | 'beverage' | 'snack_treat' | 'other' {
+/** Categorize aircraft component for context-aware guidance. */
+function getComponentCategory(name: string): 'engine' | 'airframe' | 'landing_gear' | 'avionics' | 'fuel_system' | 'control_surface' | 'electrical' | 'other' {
   const n = name.toLowerCase();
-  if (n.match(/vitamin|multivitamin|supplement|probiotic pill|fish oil|omega-3 pill|calcium pill|b12|iron supplement|gummy vitamin/)) return 'supplement';
-  if (n.match(/orange|apple|banana|berry|berries|grape|melon|mango|peach|pear|kiwi|citrus|fruit/)) return 'fruit';
-  if (n.match(/spinach|broccoli|kale|lettuce|carrot|tomato|pepper|cucumber|vegetable|greens/)) return 'vegetable';
-  if (n.match(/milk|yogurt|cheese|cream|dairy/)) return 'dairy';
-  if (n.match(/chicken|beef|pork|fish|salmon|tuna|turkey|meat|egg/)) return 'meat_fish_egg';
-  if (n.match(/bread|rice|oat|pasta|quinoa|cereal|grain/)) return 'grain';
-  if (n.match(/soda|juice|coffee|tea|water|drink|beverage/)) return 'beverage';
-  if (n.match(/candy|chocolate|cookie|cake|chips|crisp|ice cream|donut|sweet|treat/)) return 'snack_treat';
+  if (n.match(/engine|cowling|cylinder|piston|crankshaft|camshaft|magneto|carburetor|spark plug|oil filter|exhaust|propeller|alternator/)) return 'engine';
+  if (n.match(/wing|fuselage|strut|skin|rivet|spar|rib|bulkhead|firewall/)) return 'airframe';
+  if (n.match(/landing gear|wheel|brake|tire|strut|oleo|nose wheel|main wheel/)) return 'landing_gear';
+  if (n.match(/avionics|radio|transponder|nav|gps|instrument|altimeter|airspeed|gyro|attitude/)) return 'avionics';
+  if (n.match(/fuel|tank|fuel line|fuel valve|drain|gascolator|selector/)) return 'fuel_system';
+  if (n.match(/aileron|elevator|rudder|flap|trim|control|cable|pushrod|bellcrank/)) return 'control_surface';
+  if (n.match(/battery|wire|bus|fuse|breaker|light|beacon|strobe|navigation light/)) return 'electrical';
   return 'other';
 }
 
-/** Only mention macros when they're meaningful; item-specific copy first. */
+/** Generate actionable maintenance guidance based on component and technician context. */
 function getActionableBullets(details: ItemDetails, profile: PersonProfile | null): string[] {
   const bullets: string[] = [];
-  const { macros, name } = details;
-  const goals = profile?.bodyHealth?.bodyGoals ?? [];
-  const conditions = profile?.bodyHealth?.healthConditions ?? [];
-  const notes = (profile?.bodyHealth?.healthNotes ?? '').toLowerCase();
-  const deficiencies = profile?.bloodworkDeficiencies ?? [];
-  const cal = macros?.calories ?? 0;
-  const protein = macros?.protein ?? 0;
-  const carbs = macros?.carbs ?? 0;
-  const fat = macros?.fat ?? 0;
-  const category = getProductCategory(name ?? '');
+  const { name, safetyInfo, procedures, specs } = details;
+  const wc = profile?.workContext;
+  const certifications = profile?.certifications ?? [];
+  const safetyReqs = profile?.safetyRequirements ?? [];
+  const category = getComponentCategory(name ?? '');
 
-  const hasCut = goals.some((g) => /cut|loss|weight|lean/i.test(g));
-  const hasBulk = goals.some((g) => /bulk|gain|muscle|mass/i.test(g));
-  const hasStomach = conditions.some((c) => /stomach|ibs|digest|reflux|sensitive|gut/i.test(c)) || /stomach|belly|digest|reflux|ibs/.test(notes);
-  const hasDiabetes = conditions.some((c) => /diabet|blood sugar|glucose/i.test(c)) || /diabet|blood sugar/.test(notes);
-  const hasPain = goals.some((g) => /pain|inflammat|ache/i.test(g)) || conditions.some((c) => /pain|inflammat|arthritis/i.test(c));
-  const deficiencyList = deficiencies.map((d) => d.nutrient.toLowerCase());
-
-  // —— 1. Item-specific: what this product actually is (always honest) ——
-  if (category === 'supplement') {
-    bullets.push('Supplements micronutrients—take with food as directed. Not a substitute for a balanced diet.');
-    if (productMatch(name!, 'vitamin d', 'vitamin d3')) bullets.push('Can help meet your Vitamin D target if you’re low.');
-    if (productMatch(name!, 'iron')) bullets.push('Take with vitamin C (e.g. orange juice) for better absorption.');
-    if (productMatch(name!, 'b12')) bullets.push('Useful if you’re low in B12; consistent intake matters.');
-    return bullets; // no macro BS for supplements
-  }
-
-  if (category === 'fruit') {
-    if (productMatch(name!, 'orange', 'citrus', 'grapefruit', 'lemon')) bullets.push('Vitamin C supports immunity and helps absorb iron from other foods; fiber and hydration. Low cal, no fat.');
-    else if (productMatch(name!, 'banana')) bullets.push('Potassium for muscles and blood pressure; quick carbs for energy. Easy on the stomach for many; good pre- or post-workout.');
-    else if (productMatch(name!, 'berry', 'berries')) bullets.push('Antioxidants and fiber; relatively low sugar for fruit. Supports heart and digestion.');
-    else bullets.push('Fruit: vitamins, fiber, natural sugar. Low in protein—pair with protein or fat to stay full.');
-  }
-
-  if (category === 'vegetable') {
-    bullets.push('Fiber, vitamins, minimal calories. Add fat (oil, nuts) or eat with a meal so you absorb fat-soluble vitamins.');
-  }
-
-  if (category === 'dairy') {
-    if (productMatch(name!, 'yogurt', 'greek yogurt')) bullets.push('Protein and probiotics for gut health; plain versions have less added sugar. Filling and versatile.');
-    else if (productMatch(name!, 'milk')) bullets.push('Protein and often fortified with D and calcium for bones. Pair with meals for satiety.');
-    else bullets.push('Dairy: protein and calcium; check label for added sugar and sodium.');
-  }
-
-  if (category === 'meat_fish_egg') {
-    if (productMatch(name!, 'salmon', 'fish', 'sardine', 'mackerel')) bullets.push('High-quality protein and omega-3s for heart and brain. Filling and nutrient-dense.');
-    else bullets.push('Solid protein for muscle and satiety; pair with veggies and a carb for a complete meal.');
-  }
-
-  if (category === 'grain') {
-    bullets.push('Carbs and often fiber for energy and digestion. Pair with protein and fat to avoid a quick spike and crash.');
-  }
-
-  if (category === 'snack_treat') {
-    bullets.push('Treat—enjoy in moderation. For a cut, watch portion size.');
-  }
-
-  if (category === 'beverage') {
-    if (productMatch(name!, 'soda', 'sweet', 'juice') && carbs > 15) bullets.push('Sugar-heavy; consider water or a smaller portion.');
-    else if (productMatch(name!, 'water')) bullets.push('No calories; stay hydrated.');
-    else bullets.push('Check label for added sugar and calories.');
-  }
-
-  // —— 2. Macros only when significant (no "1g protein supports muscle" or "15 cal for bulk") ——
-  const meaningfulProtein = protein >= 7;
-  const meaningfulCarbs = carbs >= 12;
-  const meaningfulFat = fat >= 5;
-  const meaningfulCalForBulk = cal >= 150;
-  const meaningfulCalForCut = cal >= 80;
-
-  if (category !== 'beverage') {
-    if (hasCut && cal > 0 && meaningfulCalForCut) {
-      bullets.push(`${cal} cal — Budget into your deficit; ${cal > 250 ? 'this is a bigger hit—consider portion.' : 'reasonable for a cut.'}`);
-    } else if (hasBulk && cal > 0 && meaningfulCalForBulk) {
-      if (protein >= 10) bullets.push(`${cal} cal, ${protein}g protein — Solid for surplus and muscle; pair with training.`);
-      else bullets.push(`${cal} cal — Contributes to your surplus; pair with protein elsewhere.`);
-    } else if (cal > 200 && !hasCut && !hasBulk) {
-      bullets.push(`${cal} cal — Substantial; fits into your daily total.`);
+  // —— 1. Safety warnings (always first) ——
+  if (safetyInfo && safetyInfo.length > 0) {
+    for (const warning of safetyInfo.slice(0, 3)) {
+      bullets.push(`⚠ ${warning}`);
     }
   }
 
-  if (meaningfulProtein) {
-    if (profile?.proteinAndBudget && details.priceAtCostco != null && details.priceAtCostco > 0) {
-      const perDollar = (protein / details.priceAtCostco).toFixed(1);
-      bullets.push(`${protein}g protein — ${perDollar}g per dollar; good value for your protein goal.`);
-    } else if (hasBulk && protein >= 15) {
-      bullets.push(`${protein}g protein — Meaningful for muscle gain; hit your daily target with meals like this.`);
-    } else if (protein >= 15) {
-      bullets.push(`${protein}g protein — Strong source; helps with satiety and maintenance.`);
+  // —— 2. PPE requirements from profile ——
+  if (safetyReqs.length > 0) {
+    const required = safetyReqs.filter((s) => s.severity === 'required');
+    if (required.length > 0) {
+      bullets.push(`PPE Required: ${required.map((s) => s.item).join(', ')}`);
     }
   }
 
-  if (meaningfulCarbs) {
-    if (hasDiabetes) {
-      bullets.push(`${carbs}g carbs — Count toward your limit; pair with protein or fat to blunt spikes.`);
-    } else if (hasBulk && carbs >= 25) {
-      bullets.push(`${carbs}g carbs — Good fuel for recovery and surplus.`);
-    } else if (carbs >= 30) {
-      bullets.push(`${carbs}g carbs — Notable carb hit; time with activity if you care about timing.`);
+  // —— 3. Component-specific guidance ——
+  if (category === 'engine') {
+    if (componentMatch(name!, 'spark plug')) {
+      bullets.push('Inspect electrode wear and gap (0.016–0.021 in). Replace if fouled, cracked, or beyond limits.');
+      bullets.push('Torque to 300–360 in-lbs with anti-seize on threads. Reference: Cessna SM Section 11.');
+    } else if (componentMatch(name!, 'oil filter')) {
+      bullets.push('Cut open and inspect filter media for metal particles — indicates internal engine wear.');
+      bullets.push('Install new O-ring with clean oil. Hand-tight + 3/4 turn. Do NOT over-torque.');
+    } else if (componentMatch(name!, 'magneto')) {
+      bullets.push('Check timing with timing light. Internal timing: refer to Slick or Bendix overhaul manual.');
+      bullets.push('500-hr inspection interval. Check impulse coupling operation.');
+    } else if (componentMatch(name!, 'propeller')) {
+      bullets.push('Inspect for nicks, cracks, and erosion. Dress minor nicks per manufacturer limits.');
+      bullets.push('Check blade track and hub bolt torque. Reference: propeller manufacturer maintenance manual.');
+    } else {
+      bullets.push('Follow engine manufacturer overhaul/inspection procedures. Check applicable Service Bulletins.');
     }
   }
 
-  if (meaningfulFat) {
-    bullets.push(`${fat}g fat — Supports hormones and absorption; keeps you full.`);
-  }
-
-  // —— 3. Deficiencies: only when product actually helps ——
-  if (deficiencyList.length > 0 && name) {
-    if (deficiencyList.some((d) => d.includes('vitamin d')) && productMatch(name, 'milk', 'yogurt', 'fortified', 'salmon', 'egg', 'tuna')) {
-      bullets.push('Helps meet your Vitamin D goal.');
-    } else if (deficiencyList.some((d) => d.includes('iron')) && productMatch(name, 'spinach', 'bean', 'lentil', 'meat', 'beef', 'liver', 'fortified')) {
-      bullets.push('Contributes to iron—pair with vitamin C for absorption.');
-    } else if (deficiencyList.some((d) => d.includes('b12')) && productMatch(name, 'meat', 'fish', 'egg', 'dairy', 'fortified', 'nutritional yeast')) {
-      bullets.push('B12 source—helps with your deficiency when eaten regularly.');
+  if (category === 'landing_gear') {
+    if (componentMatch(name!, 'brake')) {
+      bullets.push('Inspect brake pads for minimum thickness. Check disc for scoring or heat damage.');
+      bullets.push('Bleed brakes if spongy. Use MIL-PRF-83282 hydraulic fluid (or as specified).');
+    } else if (componentMatch(name!, 'tire', 'wheel')) {
+      bullets.push('Check tire pressure and tread depth. Inspect for cuts, bulges, or flat spots.');
+      bullets.push('Check wheel bearings for play and condition during tire changes.');
+    } else {
+      bullets.push('Inspect strut for proper inflation (check service manual for oleo extension specs).');
+      bullets.push('Check all gear attach bolts for proper torque and safety wire.');
     }
   }
 
-  // —— 4. Stomach / digestive ——
-  if (hasStomach && name) {
-    if (productMatch(name, 'banana', 'rice', 'oat', 'toast', 'plain yogurt', 'chicken', 'white fish')) {
-      bullets.push('Usually gentle on sensitive stomachs.');
-    } else if (productMatch(name, 'yogurt', 'kefir', 'ferment')) {
-      bullets.push('Probiotics may help digestion; plain is often easier with IBS.');
-    } else if (productMatch(name, 'spicy', 'chili', 'acid', 'citrus', 'tomato')) {
-      bullets.push('Can trigger reflux or stomach issues if you’re sensitive.');
+  if (category === 'control_surface') {
+    bullets.push('Check for free and correct movement through full range. Verify cable tension per rigging chart.');
+    bullets.push('Inspect hinges, bellcranks, and rod ends for wear and play. Safety wire all castle nuts.');
+    if (componentMatch(name!, 'trim')) {
+      bullets.push('Verify trim tab travel limits per service manual. Check actuator and jackscrew for wear.');
     }
   }
 
-  // —— 5. Pain / inflammation ——
-  if (hasPain && name) {
-    if (productMatch(name, 'fish', 'salmon', 'sardine', 'mackerel', 'omega')) {
-      bullets.push('Omega-3s support an anti-inflammatory diet.');
-    } else if (productMatch(name, 'turmeric', 'ginger', 'green leafy')) {
-      bullets.push('Often included in anti-inflammatory eating.');
+  if (category === 'fuel_system') {
+    bullets.push('⚠ Fire hazard: ensure no ignition sources nearby. Have fire extinguisher accessible.');
+    bullets.push('⚠ Chemical-resistant gloves required for fuel system work.');
+    bullets.push('Check all fittings for leaks. Drain and check fuel for water/contamination.');
+  }
+
+  if (category === 'avionics') {
+    bullets.push('Ensure master switch OFF before working on avionics. Use ESD precautions.');
+    bullets.push('Check antenna connections and coax for damage. Verify proper operation after maintenance.');
+  }
+
+  if (category === 'electrical') {
+    bullets.push('Disconnect battery before electrical work. Verify polarity before reconnection.');
+    if (componentMatch(name!, 'battery')) {
+      bullets.push('Check electrolyte level and specific gravity (if applicable). Clean terminals and apply anti-corrosion compound.');
     }
   }
 
-  // —— 6. Pairings: what to eat it with ——
-  if (name) {
-    if (category === 'fruit') {
-      if (productMatch(name, 'orange', 'citrus', 'grapefruit', 'lemon')) bullets.push('Pairs well: leafy greens (vitamin C helps absorb iron), nuts or cheese (balance sugar), or in a smoothie with yogurt and oats.');
-      else if (productMatch(name, 'banana')) bullets.push('Pairs well: nut butter or oats for sustained energy; with protein (e.g. Greek yogurt) post-workout.');
-      else if (productMatch(name, 'berry', 'berries')) bullets.push('Pairs well: yogurt, cottage cheese, or oatmeal; add to salads or smoothies.');
-      else bullets.push('Pairs well: yogurt, oatmeal, or with a handful of nuts to balance blood sugar.');
-    }
-    if (category === 'vegetable') {
-      bullets.push('Pairs well: olive oil or lemon for absorption of fat-soluble vitamins; add to eggs, grains, or lean protein for a full meal.');
-    }
-    if (category === 'dairy') {
-      if (productMatch(name, 'yogurt', 'greek yogurt')) bullets.push('Pairs well: fruit, nuts, or granola; use as a dip or in smoothies. Plain + fruit gives protein without excess sugar.');
-      else if (productMatch(name, 'milk')) bullets.push('Pairs well: cereal, oatmeal, or in coffee; drink with a meal for better satiety.');
-      else bullets.push('Pairs well: fruit, whole grains, or as part of a balanced plate with protein and veggies.');
-    }
-    if (category === 'meat_fish_egg') {
-      if (productMatch(name, 'salmon', 'fish')) bullets.push('Pairs well: leafy greens, rice or quinoa, and lemon; fatty fish goes great with veggies for a full meal.');
-      else bullets.push('Pairs well: vegetables and a carb (rice, potato, bread) for a balanced meal; add greens for fiber and vitamins.');
-    }
-    if (category === 'grain') {
-      bullets.push('Pairs well: protein (eggs, chicken, beans) and vegetables to round out the meal and slow digestion.');
-    }
-    if (category === 'snack_treat') {
-      bullets.push('Have with a source of protein or fiber (e.g. nuts, fruit) so it doesn’t spike blood sugar alone.');
+  // —— 4. Procedures from API if available ——
+  if (procedures && procedures.length > 0 && bullets.length < 6) {
+    for (const proc of procedures.slice(0, 2)) {
+      if (!bullets.some((b) => b.includes(proc))) {
+        bullets.push(proc);
+      }
     }
   }
 
-  // —— 7. Optimal timing ——
-  if (name) {
-    if (category === 'fruit') {
-      if (productMatch(name, 'orange', 'citrus')) bullets.push('When: morning or with breakfast (vitamin C + hydration); or post-workout with protein for recovery.');
-      else if (productMatch(name, 'banana')) bullets.push('When: pre- or post-workout for quick energy; or as a morning snack with nut butter.');
-      else if (productMatch(name, 'berry', 'berries')) bullets.push('When: morning in oatmeal or yogurt; or as an afternoon snack. Avoid large portions late if you’re sensitive to sugar.');
-      else bullets.push('When: morning or with meals to help with absorption; as a snack between meals for a light option.');
-    }
-    if (category === 'vegetable') {
-      bullets.push('When: with lunch and dinner for fiber and fullness; start a meal with greens to eat more veggies.');
-    }
-    if (category === 'dairy') {
-      if (productMatch(name, 'yogurt', 'greek yogurt')) bullets.push('When: breakfast or post-workout for protein; as a snack with fruit. Plain before bed is a common choice if you tolerate dairy.');
-      else if (productMatch(name, 'milk')) bullets.push('When: with breakfast or post-workout; with a meal if you want to feel full longer.');
-      else bullets.push('When: with meals or as a snack; pair with fruit or whole grains.');
-    }
-    if (category === 'meat_fish_egg') {
-      bullets.push('When: lunch or dinner for most people; post-workout for muscle repair. Pair with carbs and veggies for a complete meal.');
-    }
-    if (category === 'grain') {
-      bullets.push('When: around workouts for fuel, or with breakfast/lunch. Earlier in the day often works better if you’re watching carbs.');
-    }
-    if (category === 'snack_treat') {
-      bullets.push('When: after a meal or with protein so it’s a treat, not a blood-sugar spike. Small portion is key.');
-    }
+  // —— 5. Work context notes ——
+  if (wc?.workNotes) {
+    bullets.push(`Work order note: ${wc.workNotes.slice(0, 120)}`);
+  }
+
+  // —— 6. Certification reminder ——
+  if (wc?.maintenanceType?.includes('inspection') && !certifications.includes('ia_inspector')) {
+    bullets.push('Note: IA (Inspection Authorization) required to sign off annual/100-hr inspections.');
   }
 
   return bullets;
@@ -239,8 +144,8 @@ function getActionableBullets(details: ItemDetails, profile: PersonProfile | nul
 export function HealthActionPanel({ itemDetails, currentProfile }: HealthActionPanelProps) {
   if (!currentProfile) return null;
 
-  const bh = currentProfile.bodyHealth;
-  const hasBodyData = bh && (bh.healthConditions?.length || bh.bodyGoals?.length || bh.healthNotes);
+  const wc = currentProfile.workContext;
+  const hasWorkContext = wc && (wc.aircraftType || wc.workOrderNumber || wc.maintenanceType?.length || wc.workNotes);
 
   return (
     <div
@@ -259,48 +164,51 @@ export function HealthActionPanel({ itemDetails, currentProfile }: HealthActionP
       }}
     >
       <div style={{ fontSize: 11, color: '#00ff88', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-        Health & action
+        Maintenance &amp; Safety
       </div>
 
       {itemDetails ? (
         <>
-          <div style={{ fontSize: 12, color: '#fff', fontWeight: 600, marginBottom: 8 }}>What this means for you</div>
+          <div style={{ fontSize: 12, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Maintenance Guidance</div>
           <p style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
-            Benefits, what to pair it with, and when it works best—tailored to you.
+            Safety warnings, procedures, and work context for this component.
           </p>
           {(() => {
             const bullets = getActionableBullets(itemDetails, currentProfile);
             return bullets.length > 0 ? (
               <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: '#ccc', lineHeight: 1.5 }}>
                 {bullets.map((b, i) => (
-                  <li key={i} style={{ marginBottom: 6 }}>
+                  <li key={i} style={{ marginBottom: 6, color: b.startsWith('⚠') ? '#ffaa00' : '#ccc' }}>
                     {b}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p style={{ fontSize: 12, color: '#888' }}>Select an item or wait for details to see personalized takeaways.</p>
+              <p style={{ fontSize: 12, color: '#888' }}>Select a component or wait for details to see maintenance guidance.</p>
             );
           })()}
         </>
       ) : (
         <>
-          <div style={{ fontSize: 12, color: '#fff', fontWeight: 600, marginBottom: 6 }}>Your health snapshot</div>
-          {hasBodyData ? (
+          <div style={{ fontSize: 12, color: '#fff', fontWeight: 600, marginBottom: 6 }}>Work Context</div>
+          {hasWorkContext ? (
             <div style={{ fontSize: 12, color: '#aaa', lineHeight: 1.45 }}>
-              {bh!.bodyGoals?.length ? (
-                <p style={{ margin: '0 0 6px 0' }}><strong style={{ color: '#00ff88' }}>Goals:</strong> {bh!.bodyGoals.join(', ')}</p>
+              {wc!.aircraftType ? (
+                <p style={{ margin: '0 0 6px 0' }}><strong style={{ color: '#00ff88' }}>Aircraft:</strong> {wc!.aircraftType}{wc!.aircraftTailNumber ? ` (${wc!.aircraftTailNumber})` : ''}</p>
               ) : null}
-              {bh!.healthConditions?.length ? (
-                <p style={{ margin: '0 0 6px 0' }}><strong style={{ color: '#00ff88' }}>Conditions:</strong> {bh!.healthConditions.join(', ')}</p>
+              {wc!.workOrderNumber ? (
+                <p style={{ margin: '0 0 6px 0' }}><strong style={{ color: '#00ff88' }}>Work Order:</strong> {wc!.workOrderNumber}</p>
               ) : null}
-              {bh!.healthNotes ? (
-                <p style={{ margin: 0 }}><strong style={{ color: '#00ff88' }}>Notes:</strong> {bh!.healthNotes}</p>
+              {wc!.maintenanceType?.length ? (
+                <p style={{ margin: '0 0 6px 0' }}><strong style={{ color: '#00ff88' }}>Type:</strong> {wc!.maintenanceType.join(', ')}</p>
+              ) : null}
+              {wc!.workNotes ? (
+                <p style={{ margin: 0 }}><strong style={{ color: '#00ff88' }}>Notes:</strong> {wc!.workNotes}</p>
               ) : null}
             </div>
           ) : (
             <p style={{ fontSize: 12, color: '#666' }}>
-              Add body goals, conditions, or notes in Who&apos;s shopping to get tags like &quot;Gentle on stomach&quot; or &quot;Good for cut&quot; on products.
+              Set up a technician profile with aircraft type, work order, and task card to get context-aware maintenance guidance.
             </p>
           )}
         </>

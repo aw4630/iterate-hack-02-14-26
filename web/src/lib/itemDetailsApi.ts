@@ -1,6 +1,6 @@
 /**
- * Fetch product details (dietary, macros, nutrition) from Gemini/Dedalus for a selected item.
- * When profile is provided, analysis is tailored to RAG (dietary, protein/budget, bloodwork, shopping list) and includes compatibility.
+ * Fetch aircraft component details (specs, maintenance, safety) from Gemini/Dedalus.
+ * When profile is provided, analysis is tailored to current work context (aircraft type, task card, certifications).
  */
 
 import { env, isDedalusApiKey } from './env';
@@ -12,29 +12,32 @@ import { profileSummary } from './rag';
 const DEDALUS_BASE = 'https://api.dedaluslabs.ai';
 
 function buildDetailsPrompt(label: string, profile: PersonProfile | null, withImage: boolean): string {
-  const ragContext = profile ? `\n\nUSER CONTEXT (use this to assess compatibility and emphasize what matters to them):\n${profileSummary(profile)}` : '';
-  return `You are a grocery/nutrition expert. You MUST always give concrete answers. Never respond with "Unknown", "label not fully visible", "check label", or "—" as a final answer.
-${withImage ? 'Look at the product in the image. Identify the exact product (brand and name) if visible; otherwise infer from shape/context.' : ''}
-For the product "${label}":
-- Use the image and your product knowledge to identify the item and look up or infer all fields.
-- If the nutrition label is not visible, give your best evidence-based estimate for this type of product (e.g. typical canned tuna macros, typical smoked fish dietary status).
-- DIETARY: Be inclusive. State all that apply: Halal, Haram, Kosher, Vegetarian, Vegan, Pescatarian, gluten-free, dairy-free, nut-free, soy-free, low-sodium, diabetic-friendly, low-FODMAP, no gelatin, no alcohol—or "Typically [X]". Never "Unknown".
-- MACROS: Always give numbers (estimate from product type if label not visible).
-- NUTRITION and DAILY VALUE: Always 1–2 concrete sentences or percentages.
-- COMPATIBILITY: Always give a clear recommendation (Good fit / Caution / Avoid) with reason based on the user context. Never say only "Check label."
-- INGREDIENTS: List all ingredients (comma-separated or one per line). Use the product label if visible; otherwise list typical ingredients for this product type.
-- PRICE: Provide estimated typical prices. Format: "Costco $X.XX, Trader Joe's $X.XX, Whole Foods $X.XX, Walmart $X.XX" (use realistic estimates for the product; at least 2–3 stores).${ragContext}
+  const ragContext = profile ? `\n\nTECHNICIAN CONTEXT (use this to tailor the response to their current work):\n${profileSummary(profile)}` : '';
+  return `You are an aircraft maintenance expert with knowledge of the Cessna 172 Service Manual (D2065-3-13) and general aviation maintenance practices. You MUST always give concrete answers. Never respond with "Unknown", "check manual", or "—" as a final answer.
+${withImage ? 'Look at the aircraft component in the image. Identify the exact part (manufacturer and part number) if visible; otherwise infer from shape/context and aircraft type.' : ''}
+For the component "${label}":
+- Use the image and your maintenance knowledge to identify the part and look up or infer all fields.
+- If the part number is not visible, give your best estimate for this type of component on the likely aircraft.
+- PART NUMBER: Manufacturer part number. If not visible, provide the standard/common part number for this component.
+- SPECS: Material, weight, service life or TBO, operating limits or tolerances.
+- SAFETY: Required PPE, hazards, warnings. Be specific — e.g. "torque wrench required: 300–360 in-lbs" not just "use tools."
+- PROCEDURES: Key inspection/maintenance steps. Reference manual sections (e.g. "Cessna SM Section 11") where applicable.
+- COMPATIBILITY: Aircraft models this part fits. State clearly if it's specific to a model series.
+- PRICE: Estimated costs from aviation suppliers. Format: "Aircraft Spruce $X.XX, Aviall $X.XX, SkyGeek $X.XX" (use realistic estimates; at least 2–3 suppliers).
+- INSTALLATION: Torque values, special tools, sequence notes. Reference applicable manual section.
+- AD REFERENCES: Any relevant Airworthiness Directives or Service Bulletins affecting this component.${ragContext}
 
 Reply in this exact format (short lines, labels in caps):
-PRODUCT: <exact brand and product name if visible, otherwise specific product type>
-DIETARY: ...
-MACROS: ... cal, ...g protein, ...g carbs, ...g fat
-ALLERGENS: ...
-INGREDIENTS: ingredient1, ingredient2, ingredient3, ...
-PRICE: Costco $X.XX, Trader Joe's $X.XX, ...
-NUTRITION: ...
-DAILY VALUE: ...
-COMPATIBILITY: ...`;
+COMPONENT: <exact part name and number if visible, otherwise specific component type>
+PART NUMBER: ...
+MANUFACTURER: ...
+SPECS: material, weight, service life, operating limits
+SAFETY: PPE and hazards
+PROCEDURES: key maintenance steps with manual references
+COMPATIBILITY: aircraft models
+PRICE: Aircraft Spruce $X.XX, Aviall $X.XX, ...
+INSTALLATION: torque values, tools, sequence
+AD REFERENCES: applicable ADs or SBs`;
 }
 
 function parseDetailsText(label: string, text: string): ItemDetails {
@@ -42,72 +45,72 @@ function parseDetailsText(label: string, text: string): ItemDetails {
   const lines = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
 
   for (const line of lines) {
-    if (line.toUpperCase().startsWith('DIETARY:')) {
-      const v = line.replace(/^dietary:\s*/i, '').trim();
-      details.dietary = [v && !/^unknown\.?$/i.test(v) ? v : 'See nutrition label for certification'];
+    if (line.toUpperCase().startsWith('COMPONENT:')) {
+      const v = line.replace(/^component:\s*/i, '').trim();
+      if (v && v !== label) details.name = v;
     }
-    if (line.toUpperCase().startsWith('MACROS:')) {
-      const v = line.replace(/^macros:\s*/i, '').trim();
-      const cal = v.match(/(\d+)\s*cal/i)?.[1];
-      const protein = v.match(/(\d+(?:\.\d+)?)\s*g\s*protein/i)?.[1];
-      const carbs = v.match(/(\d+(?:\.\d+)?)\s*g\s*carbs/i)?.[1];
-      const fat = v.match(/(\d+(?:\.\d+)?)\s*g\s*fat/i)?.[1];
-      if (cal || protein || carbs || fat) {
-        details.macros = {
-          calories: cal ? parseInt(cal, 10) : undefined,
-          protein: protein ? parseFloat(protein) : undefined,
-          carbs: carbs ? parseFloat(carbs) : undefined,
-          fat: fat ? parseFloat(fat) : undefined,
+    if (line.toUpperCase().startsWith('PART NUMBER:')) {
+      const v = line.replace(/^part number:\s*/i, '').trim();
+      if (v && !/unknown/i.test(v)) details.partNumber = v;
+    }
+    if (line.toUpperCase().startsWith('MANUFACTURER:')) {
+      const v = line.replace(/^manufacturer:\s*/i, '').trim();
+      if (v && !/unknown/i.test(v)) details.manufacturer = v;
+    }
+    if (line.toUpperCase().startsWith('SPECS:')) {
+      const v = line.replace(/^specs:\s*/i, '').trim();
+      if (v) {
+        details.specs = {
+          material: v,
+          serviceLife: 'See parsed data',
         };
       }
     }
-    if (line.toUpperCase().startsWith('ALLERGENS:')) {
-      const v = line.replace(/^allergens:\s*/i, '').trim();
-      if (v && !/none|n\/a|unknown/i.test(v)) details.allergies = [v];
+    if (line.toUpperCase().startsWith('SAFETY:')) {
+      const v = line.replace(/^safety:\s*/i, '').trim();
+      if (v) details.safetyInfo = v.split(/[;.]/).map((s) => s.trim()).filter(Boolean);
     }
-    if (line.toUpperCase().startsWith('INGREDIENTS:')) {
-      const v = line.replace(/^ingredients:\s*/i, '').trim();
+    if (line.toUpperCase().startsWith('PROCEDURES:')) {
+      const v = line.replace(/^procedures:\s*/i, '').trim();
       if (v) {
-        details.ingredients = v.split(/[,;]|\s+and\s+/).map((s) => s.trim()).filter(Boolean);
+        details.procedures = v.split(/[;.]/).map((s) => s.trim()).filter(Boolean);
       }
     }
     if (line.toUpperCase().startsWith('PRICE:')) {
       const v = line.replace(/^price:\s*/i, '').trim();
       const parts = v.split(',').map((s) => s.trim()).filter(Boolean);
       const elsewhere: { store: string; price: number }[] = [];
-      let costco: number | undefined;
+      let aircraftSpruce: number | undefined;
       for (const part of parts) {
         const match = part.match(/(.+?)\s*\$?(\d+\.?\d*)\s*$/);
         if (match) {
           const store = match[1].trim();
           const price = parseFloat(match[2]);
-          if (/costco/i.test(store)) costco = price;
+          if (/aircraft spruce/i.test(store)) aircraftSpruce = price;
           else elsewhere.push({ store, price });
         }
       }
-      if (costco != null) details.priceAtCostco = costco;
+      if (aircraftSpruce != null) details.priceAtAircraftSpruce = aircraftSpruce;
       if (elsewhere.length) details.priceElsewhere = elsewhere;
     }
-    if (line.toUpperCase().startsWith('NUTRITION:')) {
-      const v = line.replace(/^nutrition:\s*/i, '').trim();
-      details.nutritionSummary = v && !/label not fully visible|unknown/i.test(v) ? v : 'Typical nutrition for this product type; check package for exact values.';
-    }
-    if (line.toUpperCase().startsWith('DAILY VALUE:')) {
-      const v = line.replace(/^daily value:\s*/i, '').trim();
-      details.dailyValueContribution = { Summary: v && !/label not fully visible|unknown/i.test(v) ? v : 'Typical daily value contribution; see package for exact %.' };
+    if (line.toUpperCase().startsWith('INSTALLATION:')) {
+      const v = line.replace(/^installation:\s*/i, '').trim();
+      details.installationNotes = v;
     }
     if (line.toUpperCase().startsWith('COMPATIBILITY:')) {
       const v = line.replace(/^compatibility:\s*/i, '').trim();
-      details.compatibilitySummary = v && !/^check label\.?$/i.test(v) ? v : 'Compatibility depends on your dietary needs; see details above.';
+      details.compatibilitySummary = v;
     }
-    if (line.toUpperCase().startsWith('PRODUCT:')) {
-      const v = line.replace(/^product:\s*/i, '').trim();
-      if (v && v !== label) details.name = v;
+    if (line.toUpperCase().startsWith('AD REFERENCES:') || line.toUpperCase().startsWith('AD:')) {
+      const v = line.replace(/^ad\s*references?:\s*/i, '').replace(/^ad:\s*/i, '').trim();
+      if (v && !/none|n\/a/i.test(v)) {
+        details.adReferences = { 'AD/SB': v };
+      }
     }
   }
 
-  if (!details.nutritionSummary && text.length > 0) {
-    details.nutritionSummary = text.slice(0, 300).trim();
+  if (!details.installationNotes && text.length > 0) {
+    details.installationNotes = 'Refer to applicable maintenance manual.';
   }
   return details;
 }

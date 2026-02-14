@@ -1,0 +1,27 @@
+# AeroDetect classes — aircraft components and maintenance items
+# Order must match Darknet model if using custom YOLO weights
+engine-cowling
+propeller
+landing-gear-strut
+nose-wheel
+main-wheel
+brake-assembly
+exhaust-stack
+oil-filter
+air-filter
+spark-plug
+magneto
+carburetor
+fuel-line
+fuel-drain-valve
+wing-strut
+aileron
+flap
+elevator
+rudder
+trim-tab
+pitot-tube
+navigation-light
+avionics-panel
+battery
+alternator
