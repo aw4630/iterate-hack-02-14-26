@@ -21,21 +21,29 @@ export const env = {
   get dedalusVoiceApiKey(): string {
     return import.meta.env.VITE_DEDALUS_VOICE_API_KEY ?? import.meta.env.VITE_GEMINI_API_KEY ?? '';
   },
-  /** Dedalus model for voice Q&A only (when using Dedalus). Other features use google/gemini-2.0-flash. Default: Mistral Small. */
+  /** Dedalus model for voice Q&A. Use same as detection (google/gemini-2.0-flash) for compatibility. */
   get dedalusVoiceModel(): string {
-    return import.meta.env.VITE_DEDALUS_VOICE_MODEL ?? 'mistralai/mistral-small';
+    return import.meta.env.VITE_DEDALUS_VOICE_MODEL ?? 'google/gemini-2.0-flash';
   },
   /** Optional: use a separate key for Gemini Live (Google). Set when using Dedalus for detection. */
   get geminiLiveApiKey(): string {
     return import.meta.env.VITE_GEMINI_LIVE_API_KEY ?? env.geminiApiKey ?? '';
   },
-  /** ElevenLabs API key for text-to-speech (voice responses). */
+  /** Optional: Google API key for voice when Dedalus returns 404. Get one at aistudio.google.com/apikey */
+  get googleVoiceFallbackKey(): string {
+    return (import.meta.env.VITE_GOOGLE_VOICE_API_KEY as string)?.trim() ?? '';
+  },
+  /** ElevenLabs API key for TTS (conversational voice responses). */
   get elevenLabsApiKey(): string {
     return import.meta.env.VITE_ELEVENLABS_API_KEY ?? '';
   },
-  /** ElevenLabs voice ID for TTS. Default: Rachel (conversational). */
+  /** ElevenLabs voice ID. Default: Rachel (conversational). */
   get elevenLabsVoiceId(): string {
     return import.meta.env.VITE_ELEVENLABS_VOICE_ID ?? '21m00Tcm4TlvDq8ikWAM';
+  },
+  /** Optional: full URL to manual PDF if local /manuals/ file fails (e.g. symlink on Windows). Example: https://yoursite.com/cessna172-sm.pdf */
+  get manualPdfBaseUrl(): string {
+    return (import.meta.env.VITE_MANUAL_PDF_URL as string)?.trim() ?? '';
   },
 };
 

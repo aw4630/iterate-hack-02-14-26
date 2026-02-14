@@ -3,6 +3,8 @@
  * searches by component keywords, and returns relevant chunks with page references.
  */
 
+import { env } from './env';
+
 export interface ManualRef {
   page: number;
   section: string;
@@ -135,7 +137,7 @@ export async function searchKB(componentLabel: string, maxChunks = 5): Promise<K
     return { chunks: [], primaryRef: null, refs: [], contextText: '' };
   }
 
-  const pdfBase = kb.manual.pdfFile || '/manuals/cessna172-sm.pdf';
+  const pdfBase = env.manualPdfBaseUrl || kb.manual.pdfFile || '/manuals/cessna172-sm.pdf';
 
   const refs: ManualRef[] = matches.map((m) => ({
     page: m.chunk.page,
@@ -190,7 +192,7 @@ export function searchKBSync(componentLabel: string, maxChunks = 3): KBSearchRes
   const matches = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, maxChunks);
   if (!matches.length) return null;
 
-  const pdfBase = _kb.manual.pdfFile || '/manuals/cessna172-sm.pdf';
+  const pdfBase = env.manualPdfBaseUrl || _kb.manual.pdfFile || '/manuals/cessna172-sm.pdf';
   const seenPages = new Set<number>();
   const refs: ManualRef[] = [];
   for (const m of matches) {

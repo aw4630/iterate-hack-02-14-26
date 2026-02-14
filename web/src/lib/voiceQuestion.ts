@@ -11,98 +11,69 @@ import { searchKB } from './knowledgeBase';
 
 const DEDALUS_BASE = 'https://api.dedaluslabs.ai';
 
-/** Specialized voice intents for wake-word flow (Flightsight). */
-export type VoiceIntent = 'describe' | 'issues' | 'what_to_check' | 'summarize_scene' | 'help' | null;
-
-/** Returns true if the transcript is the wake phrase "flightsight" or "hey flightsight". */
-export function isWakePhrase(transcript: string): boolean {
-  return /^(hey\s+)?flightsight\s*$/i.test(transcript.trim());
-}
-
-/** Match user's spoken command to a specialized intent. */
-export function getVoiceIntent(transcript: string): VoiceIntent {
-  const t = transcript.trim().toLowerCase();
-  if (!t) return null;
-  if (/\bhelp\b/.test(t) || t === 'what can i say' || t === 'what can i ask') return 'help';
-  if (/\b(issue|wrong|problem|broken|damage|worn|leak)\b/.test(t)) return 'issues';
-  if (/\b(check|inspect|verify|look for)\b/.test(t)) return 'what_to_check';
-  if (/\b(describe|what is this|what\'?s this|identify)\b/.test(t)) return 'describe';
-  if (/\b(looking at|what am i seeing|what do i see|summarize)\b/.test(t)) return 'summarize_scene';
-  return 'describe';
-}
-
-/** Question we send to Gemini for a given intent. */
-function questionForIntent(intent: VoiceIntent, componentContext: string, detectedLabels: string[]): string {
-  const component = componentContext && componentContext !== 'No component selected' ? componentContext : (detectedLabels[0] ?? 'the main component in view');
-  switch (intent) {
-    case 'help':
-      return '';
-    case 'issues':
-      return `What could be wrong or what issues should I look for on this part: ${component}? Be brief and specific.`;
-    case 'what_to_check':
-      return `What should I check or inspect on ${component}? Give 2–3 concrete steps.`;
-    case 'describe':
-      return `In one or two sentences, what is ${component} and its role on the aircraft?`;
-    case 'summarize_scene':
-      return `In one or two sentences, what is the main component I'm looking at? Components in view: ${detectedLabels.join(', ') || 'unknown'}. Focus on the most prominent one.`;
-    default:
-      return `Briefly describe ${component}.`;
-  }
-}
-
-export const VOICE_HELP_RESPONSE =
-  "You can say: describe this component, any issues here, what should I check, or what am I looking at. Say Flightsight again to ask another question.";
-
-function buildPrompt(question: string, componentContext: string, techProfileSummary?: string, kbContext?: string, forVoice = false): string {
+function buildPrompt(question: string, componentContext: string, techProfileSummary?: string, kbContext?: string): string {
   const context = techProfileSummary
     ? `\nTechnician context (answer with this in mind): ${techProfileSummary}\n`
     : '';
   const kbSection = kbContext
     ? `\nCESSNA 172 SERVICE MANUAL REFERENCE (real data from D2065-3-13 — use this and cite page numbers):\n${kbContext}\n`
     : '';
-  const voiceInstruction = forVoice
-    ? '\nAnswer in a brief, conversational way as if giving verbal instructions. 2–3 sentences, natural tone. No bullet lists.'
-    : '';
   return `The user is an aircraft maintenance technician asking about a component they're looking at during maintenance.
 
 Component: ${componentContext || 'No specific component selected.'}
 ${context}${kbSection}
 User's question: "${question}"
-${voiceInstruction}
 
-Answer as an aircraft maintenance expert. Use the SERVICE MANUAL REFERENCE data above if relevant — cite the exact page numbers (e.g. "per SM p.377, Fig 15-2"). Also mention part numbers, torque values, safety warnings, and compliance requirements where relevant. Keep it concise (2–4 sentences).`;
+Answer as an aircraft maintenance expert in a conversational, instructional way — as if you're talking to the technician. Use the SERVICE MANUAL REFERENCE data above if relevant — cite the exact page numbers (e.g. "per SM p.377, Fig 15-2"). Mention part numbers, torque values, safety warnings, and compliance where relevant. Keep it concise (2–4 sentences). If the question is too broad (e.g. "what am I looking at" with no specific part), briefly say to select or point at one component and ask something focused like: any issues with this part? what is this component? or inspection checklist for this part.`;
 }
 
-async function askDedalus(question: string, componentContext: string, apiKey: string, profile: PersonProfile | null, kbContext?: string, forVoice = false): Promise<string> {
+/** Message spoken when user says "help" in Flightsight voice mode. */
+export const FLIGHTSIGHT_HELP_MESSAGE =
+  "You can ask focused questions about the part you're looking at. For example: Any issues with this part? What is this component? What should I check during inspection? Or: What's the torque for this? Say Flightsight again when you're ready to ask.";
+
+/** True if the transcript is a help request (e.g. "help", "what can I ask"). */
+export function isHelpIntent(transcript: string): boolean {
+  const t = transcript.trim().toLowerCase();
+  if (!t) return false;
+  if (/^(help|what can I ask|options|what do you do)\s*\.?$/i.test(t)) return true;
+  if (/^how (do I )?use (this|you|flightsight)/i.test(t)) return true;
+  return false;
+}
+
+async function askDedalus(question: string, componentContext: string, apiKey: string, profile: PersonProfile | null, kbContext?: string): Promise<string> {
   const model = env.dedalusVoiceModel;
   const res = await fetch(`${DEDALUS_BASE}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
+      'X-API-Key': apiKey,
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'user', content: buildPrompt(question, componentContext, profile ? profileSummary(profile) : undefined, kbContext, forVoice) }],
+      messages: [{ role: 'user', content: buildPrompt(question, componentContext, profile ? profileSummary(profile) : undefined, kbContext) }],
       max_tokens: 400,
       temperature: 0.3,
     }),
   });
   if (!res.ok) {
     if (res.status === 429) setDedalus429();
-    throw new Error(`Voice answer: ${res.status}`);
+    const body = await res.text();
+    const err = new Error(body ? `Voice answer: ${res.status} ${body.slice(0, 100)}` : `Voice answer: ${res.status}`);
+    (err as Error & { status: number }).status = res.status;
+    throw err;
   }
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return data.choices?.[0]?.message?.content?.trim() ?? 'No response.';
 }
 
-async function askGoogle(question: string, componentContext: string, apiKey: string, profile: PersonProfile | null, kbContext?: string, forVoice = false): Promise<string> {
+async function askGoogleWithPrompt(promptText: string, apiKey: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: buildPrompt(question, componentContext, profile ? profileSummary(profile) : undefined, kbContext, forVoice) }] }],
+      contents: [{ parts: [{ text: promptText }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 400 },
     }),
   });
@@ -113,25 +84,31 @@ async function askGoogle(question: string, componentContext: string, apiKey: str
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? 'No response.';
 }
 
-export async function askGeminiAboutProduct(question: string, componentContext: string, profile: PersonProfile | null = null, forVoice = false): Promise<string> {
+async function askGoogle(question: string, componentContext: string, apiKey: string, profile: PersonProfile | null, kbContext?: string): Promise<string> {
+  const promptText = buildPrompt(question, componentContext, profile ? profileSummary(profile) : undefined, kbContext);
+  return askGoogleWithPrompt(promptText, apiKey);
+}
+
+export async function askGeminiAboutProduct(question: string, componentContext: string, profile: PersonProfile | null = null): Promise<string> {
+  if (isHelpIntent(question)) return FLIGHTSIGHT_HELP_MESSAGE;
+
   const apiKey = env.dedalusVoiceApiKey;
   if (!apiKey) throw new Error('No API key (set VITE_GEMINI_API_KEY or VITE_DEDALUS_VOICE_API_KEY)');
 
   const kbResult = await searchKB(componentContext, 3);
   const kbContext = kbResult.contextText || undefined;
 
-  if (isDedalusApiKey(apiKey)) return askDedalus(question, componentContext, apiKey, profile, kbContext, forVoice);
-  return askGoogle(question, componentContext, apiKey, profile, kbContext, forVoice);
-}
-
-/** Get conversational answer for a voice intent (wake-word flow). Returns help text for "help", else calls Gemini with specialized question. */
-export async function getAnswerForVoiceIntent(
-  intent: VoiceIntent,
-  componentContext: string,
-  detectedLabels: string[],
-  profile: PersonProfile | null
-): Promise<string> {
-  if (intent === 'help') return VOICE_HELP_RESPONSE;
-  const question = questionForIntent(intent, componentContext, detectedLabels);
-  return askGeminiAboutProduct(question, componentContext, profile, true);
+  if (isDedalusApiKey(apiKey)) {
+    try {
+      return await askDedalus(question, componentContext, apiKey, profile, kbContext);
+    } catch (err) {
+      const status = (err as Error & { status?: number }).status;
+      const fallbackKey = env.googleVoiceFallbackKey;
+      if ((status === 404 || status === 502) && fallbackKey && !fallbackKey.startsWith('dsk-')) {
+        return askGoogle(question, componentContext, fallbackKey, profile, kbContext);
+      }
+      throw err;
+    }
+  }
+  return askGoogle(question, componentContext, apiKey, profile, kbContext);
 }

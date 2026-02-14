@@ -1,57 +1,120 @@
 /**
- * ElevenLabs text-to-speech: convert text to speech and play via browser Audio.
- * Used for conversational voice responses (e.g. after "Flightsight" wake word + command).
+ * Text-to-speech: ElevenLabs API with guaranteed fallback to browser speechSynthesis.
+ * Ensures the user always hears audio from the laptop.
  */
 
 import { env } from './env';
 
 const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1';
 
+let audioContext: AudioContext | null = null;
+
+function getAudioContext(): AudioContext {
+  if (!audioContext) {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    audioContext = new Ctx();
+  }
+  return audioContext;
+}
+
+/** Resume audio context on user gesture so playback is allowed. Call from click handler. */
+export function unlockAudio(): void {
+  try {
+    const ctx = getAudioContext();
+    if (ctx.state === 'suspended') ctx.resume();
+  } catch (_) {}
+}
+
+export function isElevenLabsConfigured(): boolean {
+  return Boolean(env.elevenLabsApiKey && env.elevenLabsApiKey.trim() !== '');
+}
+
+/** Browser TTS fallback – always works, no API key. */
+function speakWithBrowser(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    const t = text.trim() || ' ';
+    if (!t) {
+      resolve();
+      return;
+    }
+    const u = new SpeechSynthesisUtterance(t);
+    u.rate = 0.95;
+    u.pitch = 1;
+    u.volume = 1;
+    u.onend = () => resolve();
+    u.onerror = () => resolve();
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  });
+}
+
+/** Play MP3 buffer through Web Audio API (same context as user gesture) or HTML Audio. */
+function playMp3Buffer(buffer: ArrayBuffer): Promise<void> {
+  const ctx = getAudioContext();
+  if (ctx.state === 'suspended') ctx.resume();
+
+  return new Promise((resolve, reject) => {
+    ctx.decodeAudioData(buffer.slice(0), (decoded) => {
+      const src = ctx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(ctx.destination);
+      src.onended = () => resolve();
+      src.start(0);
+    }, () => {
+      // decodeAudioData failed (e.g. MP3 not supported) – use HTML Audio
+      const blob = new Blob([buffer], { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.volume = 1;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Playback failed'));
+      };
+      audio.play().catch(reject);
+    });
+  });
+}
+
 /**
- * Speak the given text using ElevenLabs TTS. Returns a Promise that resolves when playback finishes or rejects on error.
- * Requires VITE_ELEVENLABS_API_KEY to be set.
+ * Speak text out loud. Uses ElevenLabs if configured and successful;
+ * otherwise uses browser speechSynthesis so you always hear something.
  */
-export async function speakWithElevenLabs(text: string): Promise<void> {
+export function speak(text: string): Promise<void> {
+  const t = text.trim() || ' ';
+  if (!t) return Promise.resolve();
+
   const apiKey = env.elevenLabsApiKey;
-  if (!apiKey) throw new Error('ElevenLabs API key not set (VITE_ELEVENLABS_API_KEY)');
+  if (!apiKey) return speakWithBrowser(text);
 
   const voiceId = env.elevenLabsVoiceId;
-  const url = `${ELEVENLABS_BASE}/text-to-speech/${voiceId}?output_format=mp3_44100_128&optimize_streaming_latency=2`;
+  const url = `${ELEVENLABS_BASE}/text-to-speech/${voiceId}`;
 
-  const res = await fetch(url, {
+  return fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'xi-api-key': apiKey,
+      Accept: 'audio/mpeg',
     },
     body: JSON.stringify({
-      text: text.slice(0, 5000), // API limit; keep responses concise
+      text: t,
       model_id: 'eleven_turbo_v2_5',
     }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`ElevenLabs TTS error: ${res.status} ${errText.slice(0, 150)}`);
-  }
-
-  const blob = await res.blob();
-  const audioUrl = URL.createObjectURL(blob);
-
-  return new Promise((resolve, reject) => {
-    const audio = new Audio(audioUrl);
-    audio.onended = () => {
-      URL.revokeObjectURL(audioUrl);
-      resolve();
-    };
-    audio.onerror = (e) => {
-      URL.revokeObjectURL(audioUrl);
-      reject(new Error('Audio playback failed'));
-    };
-    audio.play().catch(reject);
-  });
-}
-
-export function isElevenLabsConfigured(): boolean {
-  return Boolean(env.elevenLabsApiKey && env.elevenLabsApiKey.startsWith('sk_'));
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(body ? `${res.status}: ${body.slice(0, 80)}` : `ElevenLabs ${res.status}`);
+      }
+      return res.arrayBuffer();
+    })
+    .then((buffer) => playMp3Buffer(buffer))
+    .catch((err) => {
+      console.warn('ElevenLabs TTS failed, using browser voice:', err);
+      return speakWithBrowser(text);
+    });
 }
