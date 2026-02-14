@@ -3,6 +3,8 @@
  * Replace mock data with live API or maintenance database later.
  */
 
+import type { ManualRef } from './knowledgeBase';
+
 export interface ItemDetails {
   name: string;
   partNumber?: string;
@@ -21,6 +23,8 @@ export interface ItemDetails {
   adReferences?: Record<string, string>;
   voiceAnswer?: string;
   compatibilitySummary?: string;
+  /** Manual page references from knowledge base RAG */
+  manualRefs?: ManualRef[];
 }
 
 export function getMockItemDetails(label: string): ItemDetails {

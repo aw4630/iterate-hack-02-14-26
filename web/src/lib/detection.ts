@@ -36,12 +36,17 @@ async function detectWithAeroDetect(jpegBase64: string): Promise<DetectedItem[]>
   return items.map((o) => ({ label: o.label, bbox: normalizeBbox(o.bbox) }));
 }
 
-const DETECTION_PROMPT = `You are analyzing a single image from an aircraft maintenance hangar, ramp, or workshop. List every visible aircraft part, component, system, or piece of equipment that a maintenance technician would need to identify or inspect.
+const DETECTION_PROMPT = `You are an aircraft maintenance expert analyzing a single image of a Cessna 172 (or similar general aviation aircraft). Identify ONLY components you can clearly see and are CONFIDENT about. Be conservative — it is better to miss a component than to label something incorrectly.
 
-CRITICAL: Always use SPECIFIC part or component names. Examples: "engine cowling", "propeller blade", "landing gear strut", "oil filter", "exhaust stack", "spark plug", "magneto", "carburetor", "fuel line", "brake assembly", "pitot tube", "navigation light", "aileron hinge", "flap actuator". Never use only generic words like "metal part", "component", "piece"—identify what it is specifically. If you can identify the aircraft model (e.g. Cessna 172), mention it in the label context.
+RULES:
+- Only label components you can positively identify with high confidence
+- Use SPECIFIC Cessna 172 component names from the Service Manual: "engine cowling", "propeller blade", "propeller spinner", "main landing gear strut", "nose gear strut", "main wheel", "nose wheel", "brake assembly", "exhaust stack", "oil filter housing", "spark plug", "magneto", "carburetor", "fuel line", "fuel drain valve", "wing strut", "aileron", "wing flap", "elevator", "rudder", "trim tab", "pitot tube", "navigation light", "alternator", "battery", "air filter", "windshield", "fuel cap", "static port", "antenna", "spinner bulkhead", "oil cooler", "muffler"
+- Do NOT label: sky, ground, grass, concrete, buildings, people, tools, generic "metal", "panel", "tube", "wire", "hose" without specifying what it is
+- Maximum 8 components per image — focus on the most prominent and clearly visible ones
+- If you see a Cessna 172 or similar aircraft, identify the aircraft type in your first label
 
-Respond with ONLY a JSON array, no other text. Each element: { "label": "short specific component name", "bbox": { "x", "y", "width", "height" } }.
-Use normalized coordinates 0-1: x,y = top-left corner of the item, width and height = size. Be precise so we can draw boxes on the image.`;
+Respond with ONLY a JSON array. Each element: { "label": "specific component name", "bbox": { "x": 0-1, "y": 0-1, "width": 0-1, "height": 0-1 } }.
+Normalized coordinates: x,y = top-left corner, width/height = size. Be precise with bounding boxes — they should tightly fit the component.`;
 
 const DEDALUS_BASE = 'https://api.dedaluslabs.ai';
 
@@ -143,13 +148,35 @@ async function detectWithGemini(jpegBase64: string, apiKey: string): Promise<Det
   return parseDetectionJson(text);
 }
 
+/** Filter out obviously bad detections: too small, too large, or generic labels. */
+function filterDetections(items: DetectedItem[]): DetectedItem[] {
+  const GENERIC_LABELS = new Set(['metal', 'panel', 'tube', 'wire', 'hose', 'part', 'component', 'piece', 'object', 'thing', 'item', 'surface', 'structure', 'sky', 'ground', 'grass', 'concrete', 'building', 'person', 'tool']);
+  return items.filter((item) => {
+    // Reject tiny boxes (less than 2% of image in either dimension)
+    if (item.bbox.width < 0.02 || item.bbox.height < 0.02) return false;
+    // Reject boxes that cover almost the entire image (>95%)
+    if (item.bbox.width > 0.95 && item.bbox.height > 0.95) return false;
+    // Reject generic labels
+    const lower = item.label.toLowerCase().trim();
+    if (GENERIC_LABELS.has(lower)) return false;
+    if (lower.length < 3) return false;
+    return true;
+  });
+}
+
 export async function detectItemsInImage(
   jpegBase64: string,
   apiKey: string
 ): Promise<DetectedItem[]> {
-  if (isAeroDetectConfigured()) return detectWithAeroDetect(jpegBase64);
-  if (isDedalusApiKey(apiKey)) return detectWithDedalus(jpegBase64, apiKey);
-  return detectWithGemini(jpegBase64, apiKey);
+  let items: DetectedItem[];
+  if (isAeroDetectConfigured()) {
+    items = await detectWithAeroDetect(jpegBase64);
+  } else if (isDedalusApiKey(apiKey)) {
+    items = await detectWithDedalus(jpegBase64, apiKey);
+  } else {
+    items = await detectWithGemini(jpegBase64, apiKey);
+  }
+  return filterDetections(items);
 }
 
 function normalizeBbox(b: { x?: number; y?: number; width?: number; height?: number }): BoundingBox {

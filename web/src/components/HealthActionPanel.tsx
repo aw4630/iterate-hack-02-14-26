@@ -40,7 +40,8 @@ function getComponentCategory(name: string): 'engine' | 'airframe' | 'landing_ge
 /** Generate actionable maintenance guidance based on component and technician context. */
 function getActionableBullets(details: ItemDetails, profile: PersonProfile | null): string[] {
   const bullets: string[] = [];
-  const { name, safetyInfo, procedures, specs } = details;
+  const { name, safetyInfo, procedures, specs: _specs } = details;
+  void _specs;
   const wc = profile?.workContext;
   const certifications = profile?.certifications ?? [];
   const safetyReqs = profile?.safetyRequirements ?? [];
