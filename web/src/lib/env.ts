@@ -29,6 +29,14 @@ export const env = {
   get geminiLiveApiKey(): string {
     return import.meta.env.VITE_GEMINI_LIVE_API_KEY ?? env.geminiApiKey ?? '';
   },
+  /** ElevenLabs API key for text-to-speech (voice responses). */
+  get elevenLabsApiKey(): string {
+    return import.meta.env.VITE_ELEVENLABS_API_KEY ?? '';
+  },
+  /** ElevenLabs voice ID for TTS. Default: Rachel (conversational). */
+  get elevenLabsVoiceId(): string {
+    return import.meta.env.VITE_ELEVENLABS_VOICE_ID ?? '21m00Tcm4TlvDq8ikWAM';
+  },
 };
 
 /** True if the key is a Dedalus API key (dsk-...). Use Dedalus REST for detection. */

@@ -4,7 +4,8 @@ import { detectItemsInImage, type DetectedItem } from './lib/detection';
 import { mergeWithPrevious, stepDisplayedTowardTarget } from './lib/tracking';
 import { type ItemDetails } from './lib/itemDetails';
 import { fetchItemDetailsFromGemini } from './lib/itemDetailsApi';
-import { askGeminiAboutProduct } from './lib/voiceQuestion';
+import { askGeminiAboutProduct, getAnswerForVoiceIntent, getVoiceIntent, isWakePhrase } from './lib/voiceQuestion';
+import { speakWithElevenLabs, isElevenLabsConfigured } from './lib/elevenlabs';
 import { getVideoNormFromClick, findItemAtPoint } from './lib/hitTest';
 import { getOverlaySnippet } from './lib/overlayRelevance';
 import { fetchOverlayRelevance } from './lib/overlayRelevanceApi';
@@ -47,12 +48,18 @@ export default function App() {
   const [voicePopup, setVoicePopup] = useState<{ question: string; answer: string; productName: string } | null>(null);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceModeEnabled, setVoiceModeEnabled] = useState(true);
   const [overlayRelevanceMap, setOverlayRelevanceMap] = useState<Record<string, string>>({});
 
   const detectionTimerRef = useRef<number>(0);
   const displayedItemsRef = useRef<DetectedItem[]>([]);
   const lastAutoSelectedSingleRef = useRef<string | null>(null);
+  const voicePhaseRef = useRef<'wake' | 'command'>('wake');
+  const componentContextRef = useRef<string>('');
+  const currentProfileRef = useRef<PersonProfile | null>(null);
   displayedItemsRef.current = displayedItems;
+  componentContextRef.current = itemDetails?.name ?? focusedItem ?? 'No component selected';
+  currentProfileRef.current = currentProfile;
 
   const hasActiveVideo = Boolean(stream || (cameraSource === 'rayban' && raybanVideoUrl));
 
@@ -376,6 +383,75 @@ export default function App() {
     const t = window.setTimeout(() => setMetaGlassesConnected(true), 2200);
     return () => clearTimeout(t);
   }, [cameraSource]);
+
+  // Wake-word voice mode: "Flightsight" or "Hey Flightsight" → then say a specialized command → ElevenLabs speaks the answer
+  const voiceRecRef = useRef<SpeechRecognition | null>(null);
+  useEffect(() => {
+    if (!voiceModeEnabled || !hasActiveVideo || !env.dedalusVoiceApiKey || !isElevenLabsConfigured()) return;
+    const SpeechRecognitionAPI = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+    if (!SpeechRecognitionAPI) return;
+
+    voicePhaseRef.current = 'wake';
+    const rec = new SpeechRecognitionAPI();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+    rec.maxAlternatives = 2;
+    voiceRecRef.current = rec;
+
+    rec.onresult = (event: SpeechRecognitionEvent) => {
+      const results = event.results;
+      if (!results?.length) return;
+      const last = results[results.length - 1];
+      if (!last.isFinal) return;
+      const transcript = (last[0]?.transcript ?? '').trim();
+      if (!transcript) return;
+
+      const phase = voicePhaseRef.current;
+      const componentContext = componentContextRef.current;
+      const detectedLabels = displayedItemsRef.current.map((i) => i.label);
+      const profile = currentProfileRef.current;
+
+      if (phase === 'wake') {
+        if (isWakePhrase(transcript)) {
+          voicePhaseRef.current = 'command';
+          setNotification('Say your command — e.g. describe this component, any issues here, what should I check, or help.');
+        }
+        return;
+      }
+
+      if (phase === 'command') {
+        voicePhaseRef.current = 'wake';
+        setNotification('Thinking…');
+        setVoiceLoading(true);
+        const intent = getVoiceIntent(transcript);
+        getAnswerForVoiceIntent(intent, componentContext, detectedLabels, profile)
+          .then((answer) => {
+            setVoicePopup({ question: transcript, answer, productName: componentContext || 'Scene' });
+            return speakWithElevenLabs(answer);
+          })
+          .then(() => {
+            setNotification('Say Flightsight to ask another question.');
+            setTimeout(() => setNotification(''), 4000);
+          })
+          .catch((err) => setNotification(err instanceof Error ? err.message : 'Voice failed'))
+          .finally(() => setVoiceLoading(false));
+      }
+    };
+
+    rec.onerror = () => {};
+    rec.onend = () => {
+      if (voiceRecRef.current === rec) {
+        try { rec.start(); } catch { /* already ended */ }
+      }
+    };
+
+    try { rec.start(); } catch { /* mic permission */ }
+    return () => {
+      voiceRecRef.current = null;
+      try { rec.abort(); } catch { /* noop */ }
+    };
+  }, [voiceModeEnabled, hasActiveVideo]);
 
   useEffect(() => {
     document.title = cameraSource === 'rayban' ? 'FlightSight – Live from glasses' : 'FlightSight – Aircraft Maintenance AR';
@@ -750,6 +826,22 @@ export default function App() {
               )}
               {detectionActive && displayedItems.length === 0 && !detectionError && (
                 <div style={{ fontSize: 12, color: '#888' }}>Point camera at aircraft components…</div>
+              )}
+              {hasActiveVideo && env.dedalusVoiceApiKey && isElevenLabsConfigured() && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#888', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={voiceModeEnabled}
+                      onChange={(e) => setVoiceModeEnabled(e.target.checked)}
+                      style={{ accentColor: '#00ff88' }}
+                    />
+                    Voice mode
+                  </label>
+                  {voiceModeEnabled && (
+                    <div style={{ fontSize: 10, color: '#666', marginTop: 4 }}>Say &quot;Flightsight&quot; then ask: describe, issues, what to check, or help.</div>
+                  )}
+                </div>
               )}
               {displayedItems.length > 0 && (
                 <>
