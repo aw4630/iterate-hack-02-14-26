@@ -16,7 +16,7 @@ function buildPrompt(question: string, componentContext: string, techProfileSumm
     ? `\nTechnician context (answer with this in mind): ${techProfileSummary}\n`
     : '';
   const kbSection = kbContext
-    ? `\nCESSNA 172 SERVICE MANUAL REFERENCE (real data from D2065-3-13 — use this and cite page numbers):\n${kbContext}\n`
+    ? `\nMAINTENANCE MANUAL REFERENCES (real data from Cessna 172 SM D2065-3-13 and/or Lycoming O-320 OM 60297-22 — use this and cite page numbers):\n${kbContext}\n`
     : '';
   return `The user is an aircraft maintenance technician asking about a component they're looking at during maintenance.
 
@@ -24,7 +24,7 @@ Component: ${componentContext || 'No specific component selected.'}
 ${context}${kbSection}
 User's question: "${question}"
 
-Answer as an aircraft maintenance expert in a conversational, instructional way — as if you're talking to the technician. Use the SERVICE MANUAL REFERENCE data above if relevant — cite the exact page numbers (e.g. "per SM p.377, Fig 15-2"). Mention part numbers, torque values, safety warnings, and compliance where relevant. Keep it concise (2–4 sentences). If the question is too broad (e.g. "what am I looking at" with no specific part), briefly say to select or point at one component and ask something focused like: any issues with this part? what is this component? or inspection checklist for this part.`;
+Answer as an aircraft maintenance expert in a conversational, instructional way — as if you're talking to the technician. Use the MANUAL REFERENCES data above if relevant — cite the exact page numbers and which manual (e.g. "per Cessna SM p.377, Fig 15-2" or "per O-320 OM p.34"). Mention part numbers, torque values, safety warnings, and compliance where relevant. Keep it concise (2–4 sentences). If the question is too broad (e.g. "what am I looking at" with no specific part), briefly say to select or point at one component and ask something focused like: any issues with this part? what is this component? or inspection checklist for this part.`;
 }
 
 /** Message spoken when user says "help" in Flightsight voice mode. */

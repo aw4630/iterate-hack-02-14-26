@@ -26,8 +26,9 @@ export function getOverlaySnippet(label: string, profile: PersonProfile | null, 
 
   if (!profile) {
     if (manualRef) {
+      const mName = manualRef.manualName || 'SM';
       const fig = manualRef.figure ? `, Fig ${manualRef.figure}` : '';
-      return { emphasis: 'medium', line: `SM p.${manualRef.page}${fig}`, manualRef };
+      return { emphasis: 'medium', line: `${mName} p.${manualRef.page}${fig}`, manualRef };
     }
     return { emphasis: 'none' };
   }
@@ -38,9 +39,10 @@ export function getOverlaySnippet(label: string, profile: PersonProfile | null, 
   // Build the display line
   let line = '';
   if (hasRelevance) line = relevanceFromApi!.trim();
-  if (manualRef && !line.includes('SM ')) {
+  if (manualRef && !line.includes(' p.')) {
+    const mName = manualRef.manualName || 'SM';
     const fig = manualRef.figure ? `, Fig ${manualRef.figure}` : '';
-    const smRef = `SM p.${manualRef.page}${fig}`;
+    const smRef = `${mName} p.${manualRef.page}${fig}`;
     line = line ? `${line} · ${smRef}` : smRef;
   }
 

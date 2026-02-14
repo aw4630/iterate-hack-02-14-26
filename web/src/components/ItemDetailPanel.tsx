@@ -15,9 +15,10 @@ interface ItemDetailPanelProps {
 
 function ManualRefLink({ manualRef: mRef, compact }: { manualRef: ManualRef; compact?: boolean }) {
   const fig = mRef.figure ? `, Fig ${mRef.figure}` : '';
+  const mName = mRef.manualName || 'SM';
   const label = compact
-    ? `p.${mRef.page}${fig}`
-    : `Section ${mRef.section}: ${mRef.sectionTitle} — p.${mRef.page}${fig}`;
+    ? `${mName} p.${mRef.page}${fig}`
+    : `[${mName}] Section ${mRef.section}: ${mRef.sectionTitle} — p.${mRef.page}${fig}`;
   return (
     <a
       href={mRef.pdfUrl}

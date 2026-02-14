@@ -1,5 +1,5 @@
 /**
- * RAG knowledge base: loads pre-extracted Cessna 172 Service Manual content,
+ * RAG knowledge base: loads pre-extracted manual content (Cessna 172 SM + Lycoming O-320 OM),
  * searches by component keywords, and returns relevant chunks with page references.
  */
 
@@ -12,6 +12,8 @@ export interface ManualRef {
   figure?: string | null;
   figureTitle?: string | null;
   pdfUrl: string;        // e.g. "/manuals/cessna172-sm.pdf#page=377"
+  /** Which manual this ref is from */
+  manualName?: string;
 }
 
 export interface KBChunk {
@@ -25,6 +27,8 @@ export interface KBChunk {
   figureTitle?: string | null;
   content: string;
   table?: string | null;
+  /** Which manual: undefined/'cessna172' = Cessna SM, 'o320' = Lycoming O-320 OM */
+  manual?: string;
 }
 
 export interface KBSearchResult {
@@ -46,6 +50,28 @@ interface KBData {
     pdfFile: string;
   };
   chunks: KBChunk[];
+}
+
+/** PDF paths per manual source */
+const MANUAL_PDFS: Record<string, string> = {
+  cessna172: '/manuals/cessna172-sm.pdf',
+  o320: '/manuals/o320-operators-manual.pdf',
+};
+
+/** Short display names for overlay badges */
+const MANUAL_NAMES: Record<string, string> = {
+  cessna172: 'Cessna SM',
+  o320: 'O-320 OM',
+};
+
+function getPdfForChunk(chunk: KBChunk, defaultPdf: string): string {
+  const key = chunk.manual || 'cessna172';
+  return MANUAL_PDFS[key] || defaultPdf;
+}
+
+function getManualName(chunk: KBChunk): string {
+  const key = chunk.manual || 'cessna172';
+  return MANUAL_NAMES[key] || 'SM';
 }
 
 let _kb: KBData | null = null;
@@ -137,29 +163,35 @@ export async function searchKB(componentLabel: string, maxChunks = 5): Promise<K
     return { chunks: [], primaryRef: null, refs: [], contextText: '' };
   }
 
-  const pdfBase = env.manualPdfBaseUrl || kb.manual.pdfFile || '/manuals/cessna172-sm.pdf';
+  const defaultPdf = env.manualPdfBaseUrl || kb.manual.pdfFile || '/manuals/cessna172-sm.pdf';
 
-  const refs: ManualRef[] = matches.map((m) => ({
-    page: m.chunk.page,
-    section: m.chunk.section,
-    sectionTitle: m.chunk.sectionTitle,
-    figure: m.chunk.figure,
-    figureTitle: m.chunk.figureTitle,
-    pdfUrl: `${pdfBase}#page=${m.chunk.page}`,
-  }));
+  const refs: ManualRef[] = matches.map((m) => {
+    const pdf = getPdfForChunk(m.chunk, defaultPdf);
+    return {
+      page: m.chunk.page,
+      section: m.chunk.section,
+      sectionTitle: m.chunk.sectionTitle,
+      figure: m.chunk.figure,
+      figureTitle: m.chunk.figureTitle,
+      pdfUrl: `${pdf}#page=${m.chunk.page}`,
+      manualName: getManualName(m.chunk),
+    };
+  });
 
-  // Deduplicate refs by page
-  const seenPages = new Set<number>();
+  // Deduplicate refs by page+manual
+  const seenKeys = new Set<string>();
   const uniqueRefs = refs.filter((r) => {
-    if (seenPages.has(r.page)) return false;
-    seenPages.add(r.page);
+    const key = `${r.manualName}:${r.page}`;
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
     return true;
   });
 
   const contextText = matches
     .map((m) => {
       const fig = m.chunk.figure ? ` (Figure ${m.chunk.figure}: ${m.chunk.figureTitle})` : '';
-      return `[SM Section ${m.chunk.section}, p.${m.chunk.page}${fig}]: ${m.chunk.content}`;
+      const mName = getManualName(m.chunk);
+      return `[${mName} Section ${m.chunk.section}, p.${m.chunk.page}${fig}]: ${m.chunk.content}`;
     })
     .join('\n\n');
 
@@ -192,19 +224,23 @@ export function searchKBSync(componentLabel: string, maxChunks = 3): KBSearchRes
   const matches = scored.filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, maxChunks);
   if (!matches.length) return null;
 
-  const pdfBase = env.manualPdfBaseUrl || _kb.manual.pdfFile || '/manuals/cessna172-sm.pdf';
-  const seenPages = new Set<number>();
+  const defaultPdf = env.manualPdfBaseUrl || _kb.manual.pdfFile || '/manuals/cessna172-sm.pdf';
+  const seenKeys = new Set<string>();
   const refs: ManualRef[] = [];
   for (const m of matches) {
-    if (!seenPages.has(m.chunk.page)) {
-      seenPages.add(m.chunk.page);
+    const pdf = getPdfForChunk(m.chunk, defaultPdf);
+    const mName = getManualName(m.chunk);
+    const key = `${mName}:${m.chunk.page}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
       refs.push({
         page: m.chunk.page,
         section: m.chunk.section,
         sectionTitle: m.chunk.sectionTitle,
         figure: m.chunk.figure,
         figureTitle: m.chunk.figureTitle,
-        pdfUrl: `${pdfBase}#page=${m.chunk.page}`,
+        pdfUrl: `${pdf}#page=${m.chunk.page}`,
+        manualName: mName,
       });
     }
   }
@@ -213,6 +249,6 @@ export function searchKBSync(componentLabel: string, maxChunks = 3): KBSearchRes
     chunks: matches.map((m) => m.chunk),
     primaryRef: refs[0] ?? null,
     refs,
-    contextText: matches.map((m) => `[SM p.${m.chunk.page}]: ${m.chunk.content}`).join('\n'),
+    contextText: matches.map((m) => `[${getManualName(m.chunk)} p.${m.chunk.page}]: ${m.chunk.content}`).join('\n'),
   };
 }
